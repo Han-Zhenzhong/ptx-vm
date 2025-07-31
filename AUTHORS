@@ -1,0 +1,12 @@
+# Authors and Contributors
+
+## Main Authors
+Zhenzhong Han <zhenzhong.han@qq.com> - Project Lead and Chief Architect
+
+## Contributors
+Zhenzhong Han <zhenzhong.han@qq.com> - Core VM implementation, execution engine, memory system, documentation, testing
+
+## Special Thanks
+- NVIDIA Corporation - For providing PTX documentation and reference materials
+- LLVM Project - For inspiration on compiler infrastructure design
+- Google Test Team - For the testing framework used in this project
