@@ -303,7 +303,7 @@ bool WarpScheduler::allWarpsComplete() const {
 // CTA-level synchronization
 bool WarpScheduler::syncThreadsInCta(uint32_t ctaId, size_t syncPC) {
     // Get current warp
-    uint32_t currentWarpId = m_currentWarpId;
+    uint32_t currentWarpId = m_currentWarp;
     
     // Check if this is the first warp to reach the synchronization point
     if (m_syncState.find(ctaId) == m_syncState.end()) {
@@ -341,7 +341,7 @@ bool WarpScheduler::syncThreadsInCta(uint32_t ctaId, size_t syncPC) {
 // Grid-level synchronization
 bool WarpScheduler::syncThreadsInGrid(uint32_t gridId, size_t syncPC) {
     // Get current warp
-    uint32_t currentWarpId = m_currentWarpId;
+    uint32_t currentWarpId = m_currentWarp;
     
     // Check if this is the first warp to reach the synchronization point
     if (m_gridSyncState.find(gridId) == m_gridSyncState.end()) {

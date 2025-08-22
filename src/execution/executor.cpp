@@ -2,7 +2,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <sstream>
-#include "include/performance_counters.hpp"
+#include "performance_counters.hpp"
 #include "warp_scheduler.hpp"  // Warp scheduler header
 #include "predicate_handler.hpp"  // Predicate handler header
 #include "reconvergence_mechanism.hpp"  // Reconvergence mechanism header
@@ -18,7 +18,7 @@ public:
         }
         
         m_memorySubsystem = std::make_unique<MemorySubsystem>();
-        if (!m_memorySubsystem->initialize()) {
+        if (!m_memorySubsystem->initialize(1024 * 1024, 64 * 1024, 64 * 1024)) {
             throw std::runtime_error("Failed to initialize memory subsystem");
         }
 
@@ -35,7 +35,7 @@ public:
         }
 
         // Set execution mode to SIMT
-        m_predicateHandler->setExecutionMode(PredicateHandler::EXECUTION_MODE_SIMT);
+        m_predicateHandler->setExecutionMode(EXECUTION_MODE_SIMT);
 
         // Initialize reconvergence mechanism with CFG-based algorithm
         m_reconvergence = std::make_unique<ReconvergenceMechanism>();
@@ -51,7 +51,7 @@ public:
         m_ptInstructions = ptInstructions;
         
         // Initialize decoder
-        m_decoder = std::make_unique<PTXDecoder>(nullptr);
+        m_decoder = std::make_unique<Decoder>(nullptr);
         if (!m_decoder->decodeInstructions(m_ptInstructions)) {
             return false;
         }
@@ -61,14 +61,30 @@ public:
         m_executionComplete = false;
 
         // Build control flow graph from decoded instructions
-        if (!m_reconvergence->buildCFG(m_decodedInstructions)) {
-            std::cerr << "Failed to build control flow graph" << std::endl;
-            return false;
-        }
+        std::vector<std::vector<size_t>> cfg;
+        buildCFG(m_decodedInstructions, cfg);
+        
+        // Set the control flow graph in the reconvergence mechanism
+        m_reconvergence->setControlFlowGraph(cfg);
         
         return true;
     }
 
+    // Set decoded instructions directly
+    void setDecodedInstructions(const std::vector<DecodedInstruction>& decodedInstructions) {
+        m_decodedInstructions = decodedInstructions;
+    }
+    
+    // Set current instruction index
+    void setCurrentInstructionIndex(size_t index) {
+        m_currentInstructionIndex = index;
+    }
+    
+    // Set execution complete flag
+    void setExecutionComplete(bool complete) {
+        m_executionComplete = complete;
+    }
+    
     // Execute all instructions
     bool execute() {
         if (m_decodedInstructions.empty() || m_executionComplete) {
@@ -76,7 +92,7 @@ public:
         }
         
         // Reset instruction counter
-        m_performanceCounters.increment(PerformanceCounters::INSTRUCTIONS_EXECUTED, m_decodedInstructions.size());
+        m_performanceCounters.increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED, m_decodedInstructions.size());
         
         // Use warp scheduler to execute instructions
         // This is a simplified approach - real implementation would be more complex
@@ -123,7 +139,7 @@ public:
                 }
             } else {
                 // Instruction skipped due to predicate
-                m_performanceCounters.increment(PerformanceCounters::PREDICATE_SKIPPED);
+                m_performanceCounters.increment(PerformanceCounterIDs::PREDICATE_SKIPPED);
                 
                 // Update PC for this warp
                 size_t nextPC = m_currentInstructionIndex + 1;
@@ -163,7 +179,34 @@ public:
         return *m_warpScheduler;
     }
 
-private:
+    // Get reference to performance counters
+    PerformanceCounters& getPerformanceCounters() {
+        return m_performanceCounters;
+    }
+
+    // Build control flow graph from decoded instructions
+    void buildCFGFromDecodedInstructions(const std::vector<DecodedInstruction>& decodedInstructions) {
+        std::vector<std::vector<size_t>> cfg;
+        buildCFG(decodedInstructions, cfg);
+        
+        // Set the control flow graph in the reconvergence mechanism
+        m_reconvergence->setControlFlowGraph(cfg);
+    }
+
+    // Set register bank and memory subsystem
+    void setComponents(RegisterBank& registerBank, MemorySubsystem& memorySubsystem) {
+        // Reinitialize with the same parameters
+        m_registerBank = std::make_unique<RegisterBank>();
+        m_registerBank->initialize(registerBank.getNumRegisters());
+        
+        m_memorySubsystem = std::make_unique<MemorySubsystem>();
+        m_memorySubsystem->initialize(
+            memorySubsystem.getMemorySize(MemorySpace::GLOBAL),
+            memorySubsystem.getMemorySize(MemorySpace::SHARED),
+            memorySubsystem.getMemorySize(MemorySpace::LOCAL)
+        );
+    }
+
     // Execute a single instruction
     bool executeSingleInstruction() {
         if (m_currentInstructionIndex >= m_decodedInstructions.size()) {
@@ -174,17 +217,18 @@ private:
         const auto& instr = m_decodedInstructions[m_currentInstructionIndex];
         
         // Increment cycle counter
-        m_performanceCounters.increment(PerformanceCounters::CYCLES);
+        m_performanceCounters.increment(PerformanceCounterIDs::CYCLES);
         
         // Execute the instruction
         bool result = executeDecodedInstruction(instr);
         
         // Increment instruction counter
-        m_performanceCounters.increment(PerformanceCounters::INSTRUCTIONS_EXECUTED);
+        m_performanceCounters.increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
         
         return result;
     }
     
+private:
     // Execute a decoded instruction
     bool executeDecodedInstruction(const DecodedInstruction& instr) {
         // Check if instruction has predicate and should be skipped
@@ -225,14 +269,14 @@ private:
             case InstructionTypes::BRA:
                 return executeBRA(instr);
             
-            case InstructionTypes::EXIT:
+            case InstructionTypes::RET:
                 return executeEXIT(instr);
             
             case InstructionTypes::NOP:
                 return executeNOP(instr);
             
             default:
-                std::cerr << "Unsupported instruction type: " << instr.type << std::endl;
+                std::cerr << "Unsupported instruction type: " << static_cast<int>(instr.type) << std::endl;
                 m_currentInstructionIndex++;
                 return true; // Continue execution
         }
@@ -371,13 +415,13 @@ private:
         // Increment appropriate memory read counter
         switch (space) {
             case MemorySpace::GLOBAL:
-                m_performanceCounters.increment(PerformanceCounters::GLOBAL_MEMORY_READS);
+                m_performanceCounters.increment(PerformanceCounterIDs::GLOBAL_MEMORY_READS);
                 break;
             case MemorySpace::SHARED:
-                m_performanceCounters.increment(PerformanceCounters::SHARED_MEMORY_READS);
+                m_performanceCounters.increment(PerformanceCounterIDs::SHARED_MEMORY_READS);
                 break;
             case MemorySpace::LOCAL:
-                m_performanceCounters.increment(PerformanceCounters::LOCAL_MEMORY_READS);
+                m_performanceCounters.increment(PerformanceCounterIDs::LOCAL_MEMORY_READS);
                 break;
             default:
                 // Handle other memory spaces
@@ -412,13 +456,13 @@ private:
         // Increment appropriate memory write counter
         switch (space) {
             case MemorySpace::GLOBAL:
-                m_performanceCounters.increment(PerformanceCounters::GLOBAL_MEMORY_WRITES);
+                m_performanceCounters.increment(PerformanceCounterIDs::GLOBAL_MEMORY_WRITES);
                 break;
             case MemorySpace::SHARED:
-                m_performanceCounters.increment(PerformanceCounters::SHARED_MEMORY_WRITES);
+                m_performanceCounters.increment(PerformanceCounterIDs::SHARED_MEMORY_WRITES);
                 break;
             case MemorySpace::LOCAL:
-                m_performanceCounters.increment(PerformanceCounters::LOCAL_MEMORY_WRITES);
+                m_performanceCounters.increment(PerformanceCounterIDs::LOCAL_MEMORY_WRITES);
                 break;
             default:
                 // Handle other memory spaces
@@ -442,7 +486,7 @@ private:
         
         // Get branch target
         // Increment branch counter
-        m_performanceCounters.increment(PerformanceCounters::BRANCHES);
+        m_performanceCounters.increment(PerformanceCounterIDs::BRANCHES);
         
         if (instr.sources[0].type == OperandType::IMMEDIATE) {
             // Direct branch
@@ -454,7 +498,7 @@ private:
                 // This is a non-sequential branch
                 m_currentInstructionIndex = target;
                 // Increment divergent branch counter
-                m_performanceCounters.increment(PerformanceCounters::DIVERGENT_BRANCHES);
+                m_performanceCounters.increment(PerformanceCounterIDs::DIVERGENT_BRANCHES);
             }
         } else if (instr.sources[0].type == OperandType::REGISTER) {
             // Indirect branch
@@ -468,7 +512,7 @@ private:
                 // This is a non-sequential branch
                 m_currentInstructionIndex = target;
                 // Increment divergent branch counter
-                m_performanceCounters.increment(PerformanceCounters::DIVERGENT_BRANCHES);
+                m_performanceCounters.increment(PerformanceCounterIDs::DIVERGENT_BRANCHES);
             }
         } else {
             std::cerr << "Unsupported branch target type" << std::endl;
@@ -498,13 +542,14 @@ private:
         switch (operand.type) {
             case OperandType::REGISTER:
                 // Increment register read counter
-                m_performanceCounters.increment(PerformanceCounters::REGISTER_READS);
+                m_performanceCounters.increment(PerformanceCounterIDs::REGISTER_READS);
                 return static_cast<int64_t>(m_registerBank->readRegister(operand.registerIndex));
             
             case OperandType::IMMEDIATE:
                 return operand.immediateValue;
             
             case OperandType::MEMORY:
+                {
                 // Determine memory space
                 MemorySpace space = MemorySpace::GLOBAL;  // Simplified for now
                 if (operand.address < 0x1000) {
@@ -516,13 +561,13 @@ private:
                 // Increment appropriate memory read counter
                 switch (space) {
                     case MemorySpace::GLOBAL:
-                        m_performanceCounters.increment(PerformanceCounters::GLOBAL_MEMORY_READS);
+                        m_performanceCounters.increment(PerformanceCounterIDs::GLOBAL_MEMORY_READS);
                         break;
                     case MemorySpace::SHARED:
-                        m_performanceCounters.increment(PerformanceCounters::SHARED_MEMORY_READS);
+                        m_performanceCounters.increment(PerformanceCounterIDs::SHARED_MEMORY_READS);
                         break;
                     case MemorySpace::LOCAL:
-                        m_performanceCounters.increment(PerformanceCounters::LOCAL_MEMORY_READS);
+                        m_performanceCounters.increment(PerformanceCounterIDs::LOCAL_MEMORY_READS);
                         break;
                     default:
                         // Handle other memory spaces
@@ -530,6 +575,7 @@ private:
                 }
                 
                 return static_cast<int64_t>(m_memorySubsystem->read<uint64_t>(space, operand.address));
+                }
             
             default:
                 std::cerr << "Unknown operand type" << std::endl;
@@ -538,35 +584,156 @@ private:
     }
     
     // Store value in register with performance tracking
-    void storeRegisterValue(RegisterIndex index, uint64_t value) {
+    void storeRegisterValue(size_t index, uint64_t value) {
         // Increment register write counter
-        m_performanceCounters.increment(PerformanceCounters::REGISTER_WRITES);
+        m_performanceCounters.increment(PerformanceCounterIDs::REGISTER_WRITES);
         
         // Write to register
         m_registerBank->writeRegister(index, value);
     }
 
+    // Helper function to determine memory space from address
+    MemorySpace determineMemorySpace(uint64_t address) {
+        // Simplified implementation for determining memory space
+        if (address < 0x1000) {
+            return MemorySpace::SHARED;
+        } else if (address < 0x2000) {
+            return MemorySpace::LOCAL;
+        } else {
+            return MemorySpace::GLOBAL;
+        }
+    }
+
+    // Helper function to build CFG from decoded instructions
+    void buildCFG(const std::vector<DecodedInstruction>& instructions, std::vector<std::vector<size_t>>& cfg) {
+        // Build simple CFG based on instruction stream
+        cfg.resize(instructions.size());
+        
+        for (size_t i = 0; i < instructions.size(); ++i) {
+            const DecodedInstruction& instr = instructions[i];
+            
+            if (instr.type == InstructionTypes::BRA) {
+                // For branch instructions, add target to CFG
+                if (instr.sources.size() == 1 && 
+                    instr.sources[0].type == OperandType::IMMEDIATE) {
+                    size_t target = static_cast<size_t>(instr.sources[0].immediateValue);
+                    
+                    if (target < instructions.size()) {
+                        cfg[i].push_back(target);
+                        cfg[i].push_back(i + 1);  // Also goes to next instruction
+                    }
+                }
+            } else {
+                // For non-branch instructions, just go to next instruction
+                if (i + 1 < instructions.size()) {
+                    cfg[i].push_back(i + 1);
+                }
+            }
+        }
+    }
+    
+    // Handle synchronization points
+    void handleSynchronization(const DecodedInstruction& instruction) {
+        // At a synchronization point, we need to check for divergence
+        // and determine which threads can proceed
+        
+        // Get the predicate handler
+        PredicateHandler* predicateHandler = m_predicateHandler.get();
+        
+        // If there's an active divergence stack entry, we may need to reconverge
+        size_t joinPC;
+        uint64_t savedMask;
+        uint64_t savedDivergentMask;
+        
+        if (!predicateHandler->isDivergenceStackEmpty()) {
+            // Pop the top divergence point
+            if (predicateHandler->popDivergencePoint(joinPC, savedMask, savedDivergentMask)) {
+                // Check if we've reached the join point
+                // Note: We would need access to currentPC to do this properly
+                // For now, we'll just push it back
+                predicateHandler->pushDivergencePoint(joinPC, savedMask, savedDivergentMask);
+            }
+        }
+    }
+    
+    // Reconstruct control flow graph from PTX
+    bool buildControlFlowGraphFromPTX(const std::vector<DecodedInstruction>& instructions) {
+        // For each instruction, track where branches go and where they come from
+        // This information helps with divergence analysis
+        
+        // Clear any existing data
+        m_controlFlowGraph.clear();
+        
+        // Initialize structures
+        m_controlFlowGraph.resize(instructions.size());
+        
+        // Build basic control flow graph
+        for (size_t i = 0; i < instructions.size(); ++i) {
+            const DecodedInstruction& instr = instructions[i];
+            
+            // Check if this is a branch instruction
+            if (instr.type == InstructionTypes::BRA) {
+                // Find branch target
+                if (instr.sources.size() == 1 && 
+                    instr.sources[0].type == OperandType::IMMEDIATE) {
+                    // Direct branch
+                    size_t targetPC = static_cast<size_t>(instr.sources[0].immediateValue);
+                    
+                    // Add edge from current instruction to target
+                    if (targetPC < instructions.size()) {
+                        m_controlFlowGraph[i].push_back(targetPC);
+                    }
+                    
+                    // Also add edge to next instruction (fall-through)
+                    if (i + 1 < instructions.size()) {
+                        m_controlFlowGraph[i].push_back(i + 1);
+                    }
+                }
+            } else if (instr.type == InstructionTypes::RET) {
+                // Handle return instruction - no outgoing edges
+            } else {
+                // Normal instruction - sequential flow
+                if (i + 1 < instructions.size()) {
+                    m_controlFlowGraph[i].push_back(i + 1);
+                }
+            }
+        }
+        
+        return true;
+    }
+    
     // Core components
     std::unique_ptr<RegisterBank> m_registerBank;
     std::unique_ptr<MemorySubsystem> m_memorySubsystem;
     
     // Program state
     std::vector<PTXInstruction> m_ptInstructions;
-    std::unique_ptr<PTXDecoder> m_decoder;
+    std::unique_ptr<Decoder> m_decoder;
     std::vector<DecodedInstruction> m_decodedInstructions;
     size_t m_currentInstructionIndex = 0;
     bool m_executionComplete = false;
     
     // Performance counters
     PerformanceCounters m_performanceCounters;
-
+    
     // Execution engine components
     std::unique_ptr<WarpScheduler> m_warpScheduler;
     std::unique_ptr<PredicateHandler> m_predicateHandler;
     std::unique_ptr<ReconvergenceMechanism> m_reconvergence;  // Reconvergence mechanism
+    
+    // Control flow graph
+    std::vector<std::vector<size_t>> m_controlFlowGraph;
 };
 
-PTXExecutor::PTXExecutor() : pImpl(std::make_unique<Impl>()) {}
+PTXExecutor::PTXExecutor() : pImpl(std::make_unique<Impl>()), 
+                             m_performanceCounters(pImpl->getPerformanceCounters()) {}
+
+PTXExecutor::PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubsystem) 
+    : pImpl(std::make_unique<Impl>()), 
+      m_performanceCounters(pImpl->getPerformanceCounters()) {
+    // Override the default register bank and memory subsystem with the provided ones
+    pImpl->setComponents(registerBank, memorySubsystem);
+}
 
 PTXExecutor::~PTXExecutor() = default;
 
@@ -574,12 +741,20 @@ bool PTXExecutor::initialize(const std::vector<PTXInstruction>& ptInstructions) 
     return pImpl->initialize(ptInstructions);
 }
 
-bool PTXExecutor::execute() {
-    return pImpl->execute();
+bool PTXExecutor::initialize(const std::vector<DecodedInstruction>& decodedInstructions) {
+    // Skip decoding since we already have decoded instructions
+    pImpl->setDecodedInstructions(decodedInstructions);
+    pImpl->setCurrentInstructionIndex(0);
+    pImpl->setExecutionComplete(false);
+    
+    // Build control flow graph from decoded instructions
+    pImpl->buildCFGFromDecodedInstructions(decodedInstructions);
+    
+    return true;
 }
 
-size_t PTXExecutor::getCurrentInstructionIndex() const {
-    return pImpl->getCurrentInstructionIndex();
+bool PTXExecutor::execute() {
+    return pImpl->execute();
 }
 
 bool PTXExecutor::isExecutionComplete() const {
@@ -594,159 +769,18 @@ MemorySubsystem& PTXExecutor::getMemorySubsystem() {
     return pImpl->getMemorySubsystem();
 }
 
-// Handle branch instruction
-void Executor::handleBranch(const DecodedInstruction& instruction) {
-    // Check if predicate is valid
-    if (!instruction.hasPredicate) {
-        // Unconditional branch - no divergence
-        if (instruction.sources.size() == 1 && 
-            instruction.sources[0].type == OperandType::IMMEDIATE) {
-            // Jump to target address
-            m_currentPC = static_cast<size_t>(instruction.sources[0].immediateValue);
-            
-            // Update statistics
-            m_branchStats.unconditionalBranches++;
-        } else {
-            // Error case
-            m_currentPC++;
-            m_branchStats.errors++;
-        }
-        return;
-    }
-    
-    // Get predicate value
-    uint64_t threadMask = getPredicateMask(instruction.predicateId);
-    uint64_t activeMask = m_warpScheduler.getActiveThreads(m_currentWarpId);
-    
-    // Check for divergence
-    if (threadMask != 0 && threadMask != activeMask) {
-        // Threads will diverge
-        handleDivergence(instruction, activeMask, threadMask);
-    } else {
-        // No divergence, just execute the branch
-        if (threadMask != 0) {
-            // All active threads take the branch
-            if (instruction.sources.size() == 1 && 
-                instruction.sources[0].type == OperandType::IMMEDIATE) {
-                // Jump to target address
-                m_currentPC = static_cast<size_t>(instruction.sources[0].immediateValue);
-            } else {
-                // Error case
-                m_currentPC++;
-            }
-        } else {
-            // No threads take the branch, just advance PC
-            m_currentPC++;
-        }
-    }
-    
-    // Update branch statistics
-    m_branchStats.totalBranches++;
-    if (threadMask != 0 && threadMask != activeMask) {
-        m_branchStats.divergentBranches++;
-    }
+PerformanceCounters& PTXExecutor::getPerformanceCounters() {
+    return pImpl->getPerformanceCounters();
 }
 
-// Handle synchronization instruction
-void Executor::handleSynchronization(const DecodedInstruction& instruction) {
-    // Handle different synchronization operations
-    switch (instruction.syncType) {
-        case SyncType::SYNC_WARP:
-            // Warp-level synchronization - no action needed as all threads execute in lockstep
-            break;
-            
-        case SyncType::SYNC_CTA:
-            // CTA-level synchronization - block until all threads in CTA reach this point
-            m_warpScheduler.syncThreadsInCta(m_currentCtaId, m_currentPC);
-            break;
-            
-        case SyncType::SYNC_GRID:
-            // Grid-level synchronization - block until all CTAs in grid reach this point
-            m_warpScheduler.syncThreadsInGrid(m_currentGridId, m_currentPC);
-            break;
-            
-        case SyncType::SYNC_MEMBAR:
-            // Memory barrier - ensure memory operations are completed before proceeding
-            handleMemoryBarrier();
-            break;
-            
-        case SyncType::SYNC_UNDEFINED:
-        default:
-            // Handle undefined or unsupported synchronization type
-            m_logger.log(LogLevel::WARNING, "Unsupported synchronization type encountered");
-            break;
-    }
+const std::vector<DecodedInstruction>& PTXExecutor::getDecodedInstructions() const {
+    return pImpl->getDecodedInstructions();
 }
 
-// CTA-level synchronization implementation
-void Executor::handleCtaSynchronization() {
-    // Get current CTA ID
-    uint32_t ctaId = m_currentCtaId;
-    
-    // Check if all threads in CTA have reached the synchronization point
-    if (checkCtaThreadsCompleted(ctaId)) {
-        // All threads have reached the synchronization point, continue execution
-        return;
-    }
-    
-    // Wait for other threads in CTA to reach this point
-    while (!checkCtaThreadsCompleted(ctaId)) {
-        // Wait for other threads
-        std::this_thread::yield();
-    }
+bool PTXExecutor::executeSingleInstruction() {
+    return pImpl->executeSingleInstruction();
 }
 
-// Grid-level synchronization implementation
-void Executor::handleGridSynchronization() {
-    // Get current grid ID
-    uint32_t gridId = m_currentGridId;
-    
-    // Check if all CTAs in grid have reached the synchronization point
-    if (checkGridCtasCompleted(gridId)) {
-        // All CTAs have reached the synchronization point, continue execution
-        return;
-    }
-    
-    // Wait for other CTAs in grid to reach the point
-    while (!checkGridCtasCompleted(gridId)) {
-        // Wait for other CTAs
-        std::this_thread::yield();
-    }
-}
-
-// Memory barrier implementation
-void Executor::handleMemoryBarrier() {
-    // Ensure memory operations are completed before proceeding
-    std::atomic_thread_fence(std::memory_order_seq_cst);
-    
-    // Additional memory barrier implementation specific to GPU simulation
-    // This would include cache flushes and memory visibility operations
-    flushMemoryCaches();
-}
-
-// Check if all threads in CTA have reached synchronization point
-bool Executor::checkCtaThreadsCompleted(uint32_t ctaId) {
-    // Implementation specific to CTA thread tracking
-    // Return true when all threads in CTA have reached the synchronization point
-    // For simplicity, this is a placeholder implementation
-    return m_warpScheduler.getActiveWarpsInCta(ctaId) == 0;
-}
-
-// Check if all CTAs in grid have reached synchronization point
-bool Executor::checkGridCtasCompleted(uint32_t gridId) {
-    // Implementation specific to grid CTA tracking
-    // Return true when all CTAs in grid have reached the synchronization point
-    // For simplicity, this is a placeholder implementation
-    return m_warpScheduler.getActiveCtasInGrid(gridId) == 0;
-}
-
-// Flush memory caches for memory barrier operations
-void Executor::flushMemoryCaches() {
-    // Implementation specific to memory cache management
-    // For a basic implementation, this could be a no-op
-    // In a more advanced implementation, this would flush CPU caches
-    // and ensure memory visibility across threads
-    
-    // For better performance, we could use compiler barriers only
-    std::atomic_signal_fence(std::memory_order_seq_cst);
+size_t PTXExecutor::getCurrentInstructionIndex() const {
+    return pImpl->getCurrentInstructionIndex();
 }

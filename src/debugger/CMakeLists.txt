@@ -1,6 +1,5 @@
 # Debugger module
 add_library(debugger STATIC
-    debugger.hpp
     debugger.cpp
 )
 

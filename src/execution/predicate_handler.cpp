@@ -352,7 +352,7 @@ void PredicateHandler::setExecutionMode(ExecutionMode mode) {
     pImpl->setExecutionMode(mode);
 }
 
-PredicateHandler::ExecutionMode PredicateHandler::getExecutionMode() const {
+ExecutionMode PredicateHandler::getExecutionMode() const {
     return pImpl->getExecutionMode();
 }
 
@@ -364,7 +364,7 @@ void PredicateHandler::setPredicateState(PredicateID predicateId, bool value, bo
     pImpl->setPredicateState(predicateId, value, negated);
 }
 
-const PredicateHandler::PredicateState* PredicateHandler::getPredicateState(PredicateID predicateId) const {
+const PredicateState* PredicateHandler::getPredicateState(PredicateID predicateId) const {
     return pImpl->getPredicateState(predicateId);
 }
 

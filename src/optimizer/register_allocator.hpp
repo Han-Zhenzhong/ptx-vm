@@ -28,16 +28,16 @@ public:
     void freeRegisters();
 
     // Get number of physical registers available
-    uint32_t getNumPhysicalRegisters() const { return m_numPhysicalRegisters; }
+    uint32_t getNumPhysicalRegisters() const;
 
     // Get number of warps supported
-    uint32_t getNumWarps() const { return m_numWarps; }
+    uint32_t getNumWarps() const;
 
     // Get number of threads per warp
-    uint32_t getThreadsPerWarp() const { return m_threadsPerWarp; }
+    uint32_t getThreadsPerWarp() const;
 
     // Get total number of virtual registers allocated
-    uint32_t getTotalVirtualRegisters() const { return m_totalVirtualRegisters; }
+    uint32_t getTotalVirtualRegisters() const;
 
     // Get mapping from virtual to physical register
     uint32_t mapVirtualToPhysical(uint32_t virtualReg, uint32_t threadId = 0) const;

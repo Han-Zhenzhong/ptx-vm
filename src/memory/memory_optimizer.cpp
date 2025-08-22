@@ -20,10 +20,19 @@ public:
     void reset() {
         // Reset cache structures
         initializeCache(dataCache, dataCacheConfig);
-        initializeCache(sharedCache, sharedCacheConfig);
+        
+        // For shared cache, we'll use a default CacheConfig based on SharedMemoryConfig
+        CacheConfig sharedCacheCfg;
+        sharedCacheCfg.cacheSize = sharedCacheConfig.bankCount * sharedCacheConfig.bankSize;
+        sharedCacheCfg.lineSize = sharedCacheConfig.bankWidth;
+        sharedCacheCfg.associativity = 1; // Direct mapped for shared memory
+        sharedCacheCfg.writeThrough = true;
+        sharedCacheCfg.replacementPolicy = 0; // LRU
+        
+        initializeCache(sharedCache, sharedCacheCfg);
         
         // Reset TLB
-        tlb.resize(tlbConfig.entries);
+        tlb.resize(tlbConfig.size);
         for (auto& entry : tlb) {
             entry.valid = false;
             entry.virtualPage = 0;
@@ -50,8 +59,8 @@ public:
 
     // Initialize with specified configurations
     bool initialize(const CacheConfig& dataCacheConfig,
-                  const CacheConfig& sharedCacheConfig,
-                  const TLBConfig& tlbConfig) {
+                   const SharedMemoryConfig& sharedCacheConfig,
+                   const TLBConfig& tlbConfig) {
         this->dataCacheConfig = dataCacheConfig;
         this->sharedCacheConfig = sharedCacheConfig;
         this->tlbConfig = tlbConfig;
@@ -61,12 +70,20 @@ public:
             return false;
         }
         
-        if (!initializeCache(sharedCache, sharedCacheConfig)) {
+        // For shared cache, we'll use a default CacheConfig based on SharedMemoryConfig
+        CacheConfig sharedCacheCfg;
+        sharedCacheCfg.cacheSize = sharedCacheConfig.bankCount * sharedCacheConfig.bankSize;
+        sharedCacheCfg.lineSize = sharedCacheConfig.bankWidth;
+        sharedCacheCfg.associativity = 1; // Direct mapped for shared memory
+        sharedCacheCfg.writeThrough = true;
+        sharedCacheCfg.replacementPolicy = 0; // LRU
+        
+        if (!initializeCache(sharedCache, sharedCacheCfg)) {
             return false;
         }
         
         // Initialize TLB
-        tlb.resize(tlbConfig.entries);
+        tlb.resize(tlbConfig.size);
         for (auto& entry : tlb) {
             entry.valid = false;
             entry.virtualPage = 0;
@@ -137,7 +154,7 @@ public:
         // This would use the number of banks in shared memory configuration
         
         // Implementation for checking bank conflicts
-        uint32_t numBanks = sharedCacheConfig.banks;
+        uint32_t numBanks = sharedCacheConfig.bankCount;
         if (numBanks == 0) {
             // No banks defined, no conflicts
             return false;
@@ -149,16 +166,21 @@ public:
         
         // For each byte in the access
         for (size_t i = 0; i < size; ++i) {
-            // Determine which bank this address maps to
-            uint32_t bank = static_cast<uint32_t>((address + i) % numBanks);
+            uint64_t currentAddress = address + i;
             
-            if (bankAccessed[bank]) {
+            // Calculate bank index
+            uint32_t bankIndex = (currentAddress / sharedCacheConfig.bankWidth) % numBanks;
+            
+            // Check if bank is already accessed
+            if (bankAccessed[bankIndex]) {
                 conflict = true;
             }
             
-            bankAccessed[bank] = true;
+            // Mark bank as accessed
+            bankAccessed[bankIndex] = true;
         }
         
+        // Update statistics
         if (conflict) {
             stats.scacheBankConflicts++;
         }
@@ -266,7 +288,7 @@ private:
     // Initialize cache structure
     bool initializeCache(std::vector<std::vector<CacheLine>>& cache, const CacheConfig& config) {
         // Calculate number of sets based on associativity
-        size_t numSets = config.size / (config.lineSize * config.associativity);
+        size_t numSets = config.cacheSize / (config.lineSize * config.associativity);
         
         // Resize cache
         cache.resize(numSets);
@@ -290,7 +312,7 @@ private:
     bool checkCacheHit(const std::vector<std::vector<CacheLine>>& cache, uint64_t address) const {
         // Not implemented yet
         // For now, just record misses
-        stats.dcacheMisses++;
+        const_cast<MemoryStats&>(stats).dcacheMisses++;
         return false;
     }
 
@@ -358,7 +380,7 @@ private:
     // Data cache configuration
     CacheConfig dataCacheConfig;
     // Shared memory cache configuration
-    CacheConfig sharedCacheConfig;
+    SharedMemoryConfig sharedCacheConfig;
     // TLB configuration
     TLBConfig tlbConfig;
     
@@ -383,7 +405,7 @@ MemoryOptimizer::MemoryOptimizer() : pImpl(std::make_unique<Impl>()) {}
 MemoryOptimizer::~MemoryOptimizer() = default;
 
 bool MemoryOptimizer::initialize(const CacheConfig& dataCacheConfig,
-                              const CacheConfig& sharedCacheConfig,
+                              const SharedMemoryConfig& sharedCacheConfig,
                               const TLBConfig& tlbConfig) {
     return pImpl->initialize(dataCacheConfig, sharedCacheConfig, tlbConfig);
 }

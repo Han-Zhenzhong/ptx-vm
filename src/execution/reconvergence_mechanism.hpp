@@ -3,16 +3,10 @@
 
 #include <cstdint>
 #include <vector>
-#include "include/instruction_types.hpp"
+#include <memory>
+#include "instruction_types.hpp"
 
 typedef uint32_t PredicateID;
-
-typedef struct {
-    size_t joinPC;                // PC where threads should reconverge
-    uint64_t activeMask;          // Bitmask of active threads that need to reconverge
-    uint64_t divergentMask;       // Bitmask of threads that took the branch
-    bool isJoinPointValid;        // Whether this join point is valid
-} DivergenceStackEntry;
 
 typedef enum {
     RECONVERGENCE_ALGORITHM_BASIC = 0,     // Basic reconvergence algorithm
@@ -43,6 +37,7 @@ public:
 
     // Handle a branch instruction and track divergence
     bool handleBranch(const DecodedInstruction& instruction, 
+                     size_t instructionIndex,
                      size_t& nextPC, 
                      uint64_t& activeMask,
                      uint64_t threadMask);

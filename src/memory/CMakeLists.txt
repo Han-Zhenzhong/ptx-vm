@@ -1,10 +1,7 @@
 # Memory subsystem module
 add_library(memory STATIC
-    ${PROJECT_SOURCE_DIR}/include/memory.hpp
     ${PROJECT_SOURCE_DIR}/src/memory/memory.cpp
-    ${PROJECT_SOURCE_DIR}/src/memory/memory.hpp
     ${PROJECT_SOURCE_DIR}/src/memory/memory_optimizer.cpp
-    ${PROJECT_SOURCE_DIR}/src/memory/memory_optimizer.hpp
 )
 
 # Include headers

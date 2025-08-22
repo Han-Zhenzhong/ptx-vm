@@ -5,7 +5,7 @@
 #include <vector>
 #include <deque>
 #include <memory>
-#include "include/instruction_types.hpp"
+#include "instruction_types.hpp"
 #include "registers/register_bank.hpp"
 #include "memory/memory.hpp"
 
@@ -130,13 +130,13 @@ public:
     void reset();
 
     // Get number of warps
-    uint32_t getNumWarps() const { return m_numWarps; }
+    uint32_t getNumWarps() const;
 
     // Get number of threads per warp
-    uint32_t getThreadsPerWarp() const { return m_threadsPerWarp; }
+    uint32_t getThreadsPerWarp() const;
 
     // Get current warp being executed
-    uint32_t getCurrentWarp() const { return m_currentWarp; }
+    uint32_t getCurrentWarp() const;
 
     // Get active threads in a warp
     uint64_t getActiveThreads(uint32_t warpId) const;
@@ -186,6 +186,9 @@ public:
     bool checkGridCtasCompleted(uint32_t gridId);
     
 private:
+    uint32_t m_numWarps;              // Number of warps in this scheduler
+    uint32_t m_threadsPerWarp;        // Number of threads per warp
+    uint32_t m_currentWarp;           // Currently executing warp
     // Private implementation details
     class Impl;
     std::unique_ptr<Impl> pImpl;

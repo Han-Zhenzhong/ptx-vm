@@ -5,10 +5,22 @@
 #include <unordered_map>
 #include <cstdint>
 #include <memory>
-#include "../include/logger.hpp"
 
 // Define memory space types
 typedef uint64_t AddressSpace;
+
+// Forward declarations
+class MemorySubsystem;
+
+// Memory access flags
+enum class MemoryAccessFlags {
+    READ,
+    WRITE,
+    EXECUTE
+};
+
+// Page fault handler function pointer type
+typedef void (*PageFaultHandler)(uint64_t virtualAddress);
 
 enum class MemorySpace {
     GENERIC,    // Generic address space
@@ -20,8 +32,8 @@ enum class MemorySpace {
 
 // TLB entry structure
 struct TlbEntry {
-    uint64_t virtualPageNumber;
-    uint64_t physicalPageNumber;
+    uint64_t virtualPage;
+    uint64_t physicalPage;
     bool valid;
     bool dirty;
     uint64_t lastAccessed;
@@ -29,11 +41,18 @@ struct TlbEntry {
 
 // Page table entry structure
 struct PageTableEntry {
-    uint64_t physicalPageNumber;
+    uint64_t physicalPage;
     bool present;
     bool writable;
     bool dirty;
     uint64_t accessed;
+};
+
+// TLB configuration
+struct TLBConfig {
+    size_t size;
+    bool enabled;
+    uint64_t pageSize;
 };
 
 // Memory access result structure
@@ -42,6 +61,7 @@ struct MemoryAccessResult {
     bool pageFault;
     uint64_t physicalAddress;
     uint64_t virtualAddress;
+    bool tlbHit;
 };
 
 // Cache configuration structure
@@ -88,59 +108,51 @@ public:
     size_t getMemorySize(MemorySpace space) const;
 
     // TLB operations
-    void initializeTLB(size_t tlbSize);
-    MemoryAccessResult translateAddress(uint64_t virtualAddress);
-    bool handlePageFault(uint64_t virtualAddress);
+    void configureTlb(const TLBConfig& config);
+    bool translateAddress(uint64_t virtualAddress, uint64_t& physicalAddress);
+    void flushTlb();
+    
+    // Page fault handling
+    void setPageFaultHandler(const PageFaultHandler& handler);
+    void handlePageFault(uint64_t virtualAddress);
+    
+    // Memory access with virtual memory support
+    MemoryAccessResult accessMemory(uint64_t virtualAddress, MemoryAccessFlags flags);
+    
+    // Page table management
+    void mapPage(uint64_t virtualPage, uint64_t physicalPage);
+    void unmapPage(uint64_t virtualPage);
     
     // Cache operations
     void configureCache(const CacheConfig& config);
     void configureSharedMemory(const SharedMemoryConfig& config);
     
-    // Memory coalescing operations
-    size_t calculateCoalescingEfficiency(const std::vector<uint64_t>& addresses);
-    bool isAccessCoalesced(const std::vector<uint64_t>& addresses);
-    
     // Shared memory operations
     size_t getBankConflicts(const std::vector<uint64_t>& addresses);
     
     // Performance statistics
-    size_t getTlbHits() const { return m_tlbHits; }
-    size_t getTlbMisses() const { return m_tlbMisses; }
+    size_t getTlbHits() const;
+    size_t getTlbMisses() const;
     size_t getPageFaults() const { return m_pageFaults; }
     size_t getCacheHits() const { return m_cacheHits; }
     size_t getCacheMisses() const { return m_cacheMisses; }
     size_t getBankConflictsCount() const { return m_bankConflicts; }
+    
+    // Destructor
+    ~MemorySubsystem();
     
 private:
     // Private implementation details
     class Impl;
     std::unique_ptr<Impl> pImpl;
 
-    // TLB and page fault handling
-    std::vector<TlbEntry> m_tlb;
-    std::unordered_map<uint64_t, PageTableEntry> m_pageTable;
-    size_t m_tlbSize;
-    size_t m_pageSize;
-    size_t m_tlbHits;
-    size_t m_tlbMisses;
-    size_t m_pageFaults;
-    
-    // Cache configuration
-    CacheConfig m_cacheConfig;
-    SharedMemoryConfig m_sharedMemConfig;
-    
     // Performance counters
-    size_t m_cacheHits;
-    size_t m_cacheMisses;
-    size_t m_bankConflicts;
-    
-    // Private helper methods
-    uint64_t getVirtualPageNumber(uint64_t virtualAddress) const;
-    uint64_t getPageOffset(uint64_t virtualAddress) const;
-    TlbEntry* findTlbEntry(uint64_t virtualPageNumber);
-    void updateTlbEntry(TlbEntry* entry, uint64_t virtualPageNumber, uint64_t physicalPageNumber);
-    uint64_t allocatePhysicalPage();
-    void evictTlbEntry();
+    mutable size_t m_tlbHits;
+    mutable size_t m_tlbMisses;
+    mutable size_t m_pageFaults;
+    mutable size_t m_cacheHits;
+    mutable size_t m_cacheMisses;
+    mutable size_t m_bankConflicts;
 };
 
 #endif // MEMORY_HPP

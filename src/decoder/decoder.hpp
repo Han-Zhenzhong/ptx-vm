@@ -3,10 +3,10 @@
 
 #include <vector>
 #include "parser/parser.hpp"
-#include "include/instruction_types.hpp"
 
-// Forward declaration of VM core classes
+// Forward declarations
 class VMCore;
+struct PTXInstruction;
 
 class Decoder {
 public:

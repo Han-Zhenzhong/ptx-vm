@@ -1,6 +1,13 @@
 #include "vm.hpp"
 #include <stdexcept>
 #include "parser/parser.hpp"
+#include <iostream>
+#include "memory/memory.hpp"  // Include full definition here
+
+// Implement the deleter for MemorySubsystem
+void MemorySubsystemDeleter::operator()(::MemorySubsystem* ptr) const {
+    delete ptr;
+}
 
 // Private implementation class
 class PTXVM::Impl {
@@ -13,7 +20,7 @@ public:
 
     // Core components
     std::unique_ptr<RegisterBank> m_registerBank;
-    std::unique_ptr<MemorySubsystem> m_memorySubsystem;
+    std::unique_ptr<::MemorySubsystem, MemorySubsystemDeleter> m_memorySubsystem;
     std::unique_ptr<PTXExecutor> m_executor;
     std::unique_ptr<PerformanceCounters> m_performanceCounters;
     std::unique_ptr<Debugger> m_debugger;
@@ -21,6 +28,8 @@ public:
     
     // Initialization state
     bool isInitialized = false;
+    bool m_isProgramLoaded = false;
+    std::string m_programFilename;
 };
 
 PTXVM::PTXVM() : pImpl(std::make_unique<Impl>()) {
@@ -31,16 +40,14 @@ PTXVM::PTXVM() : pImpl(std::make_unique<Impl>()) {
     }
     
     // Create memory subsystem
-    pImpl->m_memorySubsystem = std::make_unique<MemorySubsystem>();
-    if (!pImpl->m_memorySubsystem->initialize()) {
+    pImpl->m_memorySubsystem = std::unique_ptr<::MemorySubsystem, MemorySubsystemDeleter>(new ::MemorySubsystem());
+    if (!pImpl->m_memorySubsystem->initialize(1024 * 1024, 64 * 1024, 64 * 1024)) {
         throw std::runtime_error("Failed to initialize memory subsystem");
     }
     
     // Create executor
     pImpl->m_executor = std::make_unique<PTXExecutor>(*pImpl->m_registerBank, *pImpl->m_memorySubsystem);
-    if (!pImpl->m_executor->initialize()) {
-        throw std::runtime_error("Failed to initialize executor");
-    }
+    // Note: Executor will be initialized later with actual instructions in loadAndExecuteProgram
     
     // Create performance counters
     pImpl->m_performanceCounters = std::make_unique<PerformanceCounters>();
@@ -49,7 +56,7 @@ PTXVM::PTXVM() : pImpl(std::make_unique<Impl>()) {
     pImpl->m_debugger = std::make_unique<Debugger>(pImpl->m_executor.get());
     
     // Create register allocator
-    pImpl->m_registerAllocator = std::make_unique<RegisterAllocator>();
+    pImpl->m_registerAllocator = std::make_unique<RegisterAllocator>(this);
 }
 
 PTXVM::~PTXVM() = default;
@@ -73,6 +80,19 @@ bool PTXVM::loadAndExecuteProgram(const std::string& filename) {
     
     // Execute the program
     return pImpl->m_executor->execute();
+}
+
+bool PTXVM::run() {
+    if (!pImpl->m_isProgramLoaded) {
+        return false;
+    }
+    
+    return pImpl->m_executor->execute();
+}
+
+bool PTXVM::setWatchpoint(uint64_t address) {
+    // Watchpoints not yet implemented
+    return false;
 }
 
 // Visualization methods

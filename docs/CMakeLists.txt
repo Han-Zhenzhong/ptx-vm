@@ -25,5 +25,3 @@ add_custom_target(docs
     COMMAND ${CMAKE_COMMAND} -E echo "Use markdown viewer or converter to view documentation"
 )
 
-# Add documentation to main build
-add_subdirectory(docs)

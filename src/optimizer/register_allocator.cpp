@@ -2,6 +2,10 @@
 #include <iostream>
 #include <stdexcept>
 #include <algorithm>
+#include "vm.hpp"
+
+// Define invalid register constant
+static const uint32_t INVALID_REGISTER = static_cast<uint32_t>(-1);
 
 // Private implementation class
 class RegisterAllocator::Impl {

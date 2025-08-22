@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include "include/instruction_types.hpp"
+#include "instruction_types.hpp"
 
 class PTXParser {
 public:

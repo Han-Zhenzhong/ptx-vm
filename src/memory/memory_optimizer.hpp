@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
-#include "include/memory.hpp"
+#include "memory.hpp"
 
 // Memory optimization types
 typedef enum {
@@ -14,20 +14,7 @@ typedef enum {
     CACHE_TYPE_LAST = CACHE_TYPE_SHARED
 } CacheType;
 
-// Cache configuration struct
-typedef struct {
-    uint32_t size;          // Size in bytes
-    uint32_t associativity; // Associativity (1 for direct-mapped)
-    uint32_t lineSize;      // Cache line size in bytes
-    uint32_t banks;         // Number of banks (for shared memory)
-} CacheConfig;
-
-// TLB configuration
-typedef struct {
-    uint32_t entries;       // Number of TLB entries
-    uint32_t associativity; // TLB associativity
-    uint32_t pageSize;      // Page size in bytes
-} TLBConfig;
+// Use CacheConfig and TLBConfig from memory.hpp instead of redefining them
 
 // Memory access pattern type
 typedef enum {
@@ -134,10 +121,10 @@ public:
 
     // Initialize with specified configurations
     bool initialize(const CacheConfig& dataCacheConfig,
-                  const CacheConfig& sharedCacheConfig,
+                  const SharedMemoryConfig& sharedCacheConfig,
                   const TLBConfig& tlbConfig);
 
-    // Reset state
+    // Reset to initial state
     void reset();
 
     // Check if address is cached

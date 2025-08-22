@@ -4,7 +4,6 @@ project(ptx_vm_tests)
 # Include GoogleTest
 find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
-add_subdirectory(../include ${CMAKE_CURRENT_BINARY_DIR}/include)
 
 # Add test directories
 add_subdirectory(executor_tests)
@@ -13,7 +12,6 @@ add_subdirectory(performance_benchmarks)
 
 # Add system tests
 add_executable(system_tests
-    system_tests/basic_test.cpp
     system_tests/smoke_test.cpp
     system_tests/performance_test.cpp
     system_tests/memory_performance_test.cpp
@@ -25,7 +23,15 @@ add_executable(system_tests
 # Link system tests
 target_link_libraries(system_tests
     PRIVATE
-    ptx_vm
+    core
+    decoder
+    execution
+    memory
+    optimizer
+    debugger
+    host
+    parser
+    registers
     ${GTEST_BOTH_LIBRARIES}
     pthread
 )
@@ -44,7 +50,15 @@ add_executable(performance_tests
 
 target_link_libraries(performance_tests
     PRIVATE
-    ptx_vm
+    core
+    decoder
+    execution
+    memory
+    optimizer
+    debugger
+    host
+    parser
+    registers
     ${GTEST_BOTH_LIBRARIES}
     pthread
 )

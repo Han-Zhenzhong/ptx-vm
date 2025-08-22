@@ -2,6 +2,8 @@
 #define INSTRUCTION_TYPES_HPP
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 // Define operand types
 enum class OperandType {
@@ -13,7 +15,7 @@ enum class OperandType {
 };
 
 // Instruction types
-enum class InstructionType {
+enum class InstructionTypes {
     // Arithmetic and logic operations
     ADD,
     SUB,
@@ -47,7 +49,6 @@ enum class InstructionType {
     // Special operations
     NOP,
     BARRIER,
-    SYNC,
     
     // Maximum instruction type value
     MAX_INSTRUCTION_TYPE
@@ -79,13 +80,22 @@ struct Operand {
 
 // Define decoded instruction structure
 struct DecodedInstruction {
-    InstructionType type;           // Instruction type (from InstructionTypes)
+    InstructionTypes type;           // Instruction type (from InstructionTypes)
     Operand dest;                   // Destination operand
     std::vector<Operand> sources;   // Source operands
     uint32_t modifiers;             // Instruction modifiers
     bool hasPredicate;              // Does this instruction have a predicate?
     uint32_t predicateIndex;        // Index of the predicate register
     bool predicateValue;            // Value of the predicate (true/false)
+};
+
+// Define PTX instruction structure
+struct PTXInstruction {
+    std::string opcode;             // Instruction opcode (e.g., "add", "mov", "ld")
+    std::string predicate;          // Predicate register (e.g., "p0", empty if none)
+    std::string dest;               // Destination operand
+    std::vector<std::string> sources; // Source operands
+    std::vector<std::string> modifiers; // Instruction modifiers
 };
 
 #endif // INSTRUCTION_TYPES_HPP

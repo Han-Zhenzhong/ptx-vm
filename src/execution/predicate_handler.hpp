@@ -2,7 +2,9 @@
 #define PREDICATE_HANDLER_HPP
 
 #include <cstdint>
-#include "include/instruction_types.hpp"
+#include <stack>
+#include <memory>
+#include "instruction_types.hpp"
 
 class PredicateHandler;
 
@@ -42,6 +44,11 @@ public:
     // Constructor/destructor
     PredicateHandler();
     ~PredicateHandler();
+
+    // Handle divergence and reconvergence in SIMT execution
+    void handleDivergenceReconvergence(const DecodedInstruction& instruction, 
+                                      size_t& currentPC, 
+                                      uint64_t& activeMask);
 
     // Handle SIMT divergence for instruction execution
     void handleSIMTDivergence(const DecodedInstruction& instruction, 
@@ -93,12 +100,6 @@ public:
 
     // Get number of active threads
     uint32_t getActiveThreadCount() const;
-
-    // Divergence handling methods
-    void handleSIMTDivergence(const DecodedInstruction& instruction, 
-                             size_t& currentPC, 
-                             uint64_t& activeMask,
-                             uint64_t threadMask);
     
     // Get divergence stack for a warp
     const DivergenceStack& getDivergenceStack(uint32_t warpId) const;
@@ -152,73 +153,6 @@ private:
     
     // Update reconvergence statistics
     void updateReconvergenceStats(size_t divergenceCycles);
-    
-    // Divergence handling
-    DivergenceStack m_divergenceStack;  // Stack to track divergence points
-    size_t m_divergenceStartCycle;      // Cycle when divergence started
-    
-    // Control flow graph for CFG-based reconvergence
-    std::vector<std::vector<size_t>>* m_controlFlowGraph = nullptr;
-    
-    // Divergence statistics
-    DivergenceStats stats;
-    size_t m_numDivergences = 0;
-    
-    // Current algorithm
-    ReconvergenceAlgorithm m_algorithm = RECONVERGENCE_ALGORITHM_BASIC;
-    
-    // Algorithm-specific implementations
-    void basicReconvergence(const DecodedInstruction& instruction, 
-                          size_t& nextPC, 
-                          uint64_t& activeMask,
-                          bool takeBranch,
-                          uint64_t threadMask);
-    
-    void cfgBasedReconvergence(const DecodedInstruction& instruction, 
-                             size_t& nextPC, 
-                             uint64_t& activeMask,
-                             bool takeBranch,
-                             uint64_t threadMask);
-    
-    void stackBasedReconvergence(const DecodedInstruction& instruction, 
-                               size_t& nextPC, 
-                               uint64_t& activeMask,
-                               bool takeBranch,
-                               uint64_t threadMask);
-    
-    // Find CFG-based reconvergence point
-    size_t findCFGReconvergencePoint(const DecodedInstruction& instruction);
-    
-    // Update divergence statistics
-    void updateDivergenceStats(bool takeBranch);
-    
-    // Update reconvergence statistics
-    void updateReconvergenceStats(size_t divergenceCycles);
 };
-
-// Divergence statistics structure
-typedef struct {
-    size_t numDivergentPaths;         // Total number of divergent paths
-    size_t maxDivergenceDepth;        // Maximum depth of divergence stack
-    double averageDivergenceRate;     // Average rate of divergence
-    double averageReconvergenceTime;  // Average time to reconverge
-    double divergenceImpactFactor;    // Impact on performance
-} DivergenceStats;
-
-// Divergence algorithms
-typedef enum {
-    RECONVERGENCE_ALGORITHM_BASIC,       // Basic reconvergence algorithm
-    RECONVERGENCE_ALGORITHM_CFG_BASED,   // CFG-based reconvergence algorithm
-    RECONVERGENCE_ALGORITHM_STACK_BASED  // Stack-based predication algorithm
-} ReconvergenceAlgorithm;
-
-// Divergence statistics structure
-typedef struct {
-    size_t numDivergentPaths;         // Total number of divergent paths
-    size_t maxDivergenceDepth;        // Maximum depth of divergence stack
-    double averageDivergenceRate;     // Average rate of divergence
-    double averageReconvergenceTime;  // Average time to reconverge
-    double divergenceImpactFactor;    // Impact on performance
-} DivergenceStats;
 
 #endif // PREDICATE_HANDLER_HPP

@@ -8,7 +8,6 @@
 // Forward declarations
 class CUDABinaryLoader;
 
-typedef uint32_t SectionType;
 typedef uint32_t SymbolType;
 typedef uint64_t Elf64_Addr;
 typedef uint64_t Elf64_Off;
@@ -99,15 +98,17 @@ typedef struct {
 } BinaryStats;
 
 // FATBIN parsing support
-struct FatbinHeader;
-struct FatbinEntry;
-enum FatbinEntryKind;
+enum FatbinEntryKind {
+    FATBIN_ENTRY_PTX = 1,
+    FATBIN_ENTRY_CUBIN = 2,
+    FATBIN_ENTRY_UNKNOWN = 0
+};
 
 class CudaBinaryLoader {
 public:
     // Constructor/destructor
-    CUDABinaryLoader();
-    ~CUDABinaryLoader();
+    CudaBinaryLoader();
+    ~CudaBinaryLoader();
 
     // Initialize the loader
     bool initialize();
@@ -185,10 +186,6 @@ private:
     // Relocation table
     std::vector<RelocationEntry> m_relocationTable;
     
-    // FATBIN parsing helper functions
-    bool validateFatbinHeader(const FatbinHeader& header);
-    bool processFatbinEntry(const FatbinEntry& entry, std::ifstream& file);
-    
     // FATBIN structures
     struct FatbinHeader {
         uint32_t magic;
@@ -204,6 +201,10 @@ private:
         uint64_t size;
         char name[256];
     };
+
+    // FATBIN parsing helper functions
+    bool validateFatbinHeader(const FatbinHeader& header);
+    bool processFatbinEntry(const FatbinEntry& entry, std::ifstream& file);
     
     // FATBIN entry kinds
     enum FatbinEntryKind {
@@ -215,8 +216,8 @@ private:
 
 // Factory functions
 extern "C" {
-    CUDABinaryLoader* createCUDABinaryLoader();
-    void destroyCUDABinaryLoader(CUDABinaryLoader* loader);
+    CudaBinaryLoader* createCudaBinaryLoader();
+    void destroyCudaBinaryLoader(CudaBinaryLoader* loader);
 }
 
 #endif // CUDA_BINARY_LOADER_HPP

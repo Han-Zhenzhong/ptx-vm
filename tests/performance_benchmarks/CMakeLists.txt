@@ -9,7 +9,6 @@ target_link_libraries(register_allocation_benchmark PRIVATE
     optimizer
     execution
     gtest_main
-    benchmark::benchmark_main
 )
 
 # Add to test suite

@@ -1,6 +1,6 @@
 #include <iostream>
 #include <string>
-#include "host/cli_interface.hpp"
+#include "cli_interface.hpp"
 
 int main(int argc, char* argv[]) {
     try {

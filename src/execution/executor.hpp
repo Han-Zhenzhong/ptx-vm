@@ -7,40 +7,17 @@
 #include "decoder/decoder.hpp"
 #include "registers/register_bank.hpp"
 #include "memory/memory.hpp"
-#include "include/instruction_types.hpp"
+#include "instruction_types.hpp"
 #include "warp_scheduler.hpp"
 #include "predicate_handler.hpp"
 #include "reconvergence_mechanism.hpp"
+#include <unordered_set>
+#include "performance_counters.hpp"
+#include "optimizer/instruction_scheduler.hpp"
 
 // Forward declarations
 class CFGNode;
 class ControlFlowGraph;
-
-// Divergence handling types
-struct DivergenceStackEntry {
-    size_t joinPC;          // Program counter at divergence point
-    uint64_t activeMask;    // Active threads mask before divergence
-    uint64_t divergentMask; // Threads that took the branch
-    bool isJoinPointValid;  // Whether the join point is valid
-};
-
-typedef std::vector<DivergenceStackEntry> DivergenceStack;
-
-// Divergence statistics
-struct DivergenceStats {
-    size_t numDivergentPaths;         // Total number of divergent paths
-    size_t maxDivergenceDepth;        // Maximum depth of divergence stack
-    double averageDivergenceRate;     // Average rate of divergence
-    double averageReconvergenceTime;  // Average time to reconverge
-    double divergenceImpactFactor;    // Impact on performance
-};
-
-// Reconvergence algorithms
-enum ReconvergenceAlgorithm {
-    RECONVERGENCE_ALGORITHM_BASIC,
-    RECONVERGENCE_ALGORITHM_CFG_BASED,
-    RECONVERGENCE_ALGORITHM_STACK_BASED
-};
 
 // Control flow graph node
 class CFGNode {
@@ -73,21 +50,18 @@ public:
     size_t getPC() const { return m_pc; }
     
     // Get predecessors
-    const std::vector<CFGNode*>& getPredecessors() const { return m_predecessors; }
+    const std::unordered_set<CFGNode*>& getPredecessors() const { return m_predecessors; }
     
+    // Get successors
+    const std::unordered_set<CFGNode*>& getSuccessors() const { return m_successors; }
+
 private:
-    size_t m_pc;  // Program counter for this node
-    
-    // Control flow graph connections
-    std::vector<CFGNode*> m_successors;
-    std::vector<CFGNode*> m_predecessors;
-    
-    // Post-dominator information
-    std::unordered_set<CFGNode*> m_immediatePostDominators;
-    
-    // Reconvergence point
-    size_t m_reconvergencePC;
-    bool m_hasReconvergence;
+    size_t m_pc;  // Program counter value for this node
+    std::unordered_set<CFGNode*> m_predecessors;  // Predecessor nodes
+    std::unordered_set<CFGNode*> m_successors;    // Successor nodes
+    std::unordered_set<CFGNode*> m_immediatePostDominators;  // Immediate post-dominators
+    size_t m_reconvergencePC = 0;  // Reconvergence point PC
+    bool m_hasReconvergence = false;  // Whether this node has a reconvergence point
 };
 
 // Control flow graph
@@ -96,11 +70,17 @@ public:
     ControlFlowGraph();
     ~ControlFlowGraph();
     
-    // Build CFG from PTX code
-    bool buildFromPTX(const std::string& ptxCode);
+    // Add a node to the graph
+    void addNode(CFGNode* node);
     
-    // Get node for PC
-    CFGNode* getNodeForPC(size_t pc);
+    // Get node by PC
+    CFGNode* getNode(size_t pc);
+    
+    // Build CFG from instructions
+    bool buildFromInstructions(const std::vector<DecodedInstruction>& instructions);
+    
+    // Calculate immediate post-dominators for all nodes
+    void calculateImmediatePostDominators();
     
     // Find reconvergence points
     void findReconvergencePoints();
@@ -116,33 +96,18 @@ private:
     std::unordered_map<size_t, CFGNode*> m_pcToNode;
 };
 
-// Add synchronization support
-enum class SyncType {
-    SYNC_UNDEFINED,  // Undefined or unsupported synchronization type
-    SYNC_WARP,       // Warp-level synchronization
-    SYNC_CTA,        // CTA-level synchronization
-    SYNC_GRID,       // Grid-level synchronization
-    SYNC_MEMBAR      // Memory barrier
-};
-
-struct DecodedInstruction {
-    // ... existing members ...
-    
-    // Synchronization information
-    SyncType syncType = SyncType::SYNC_UNDEFINED;
-    uint32_t syncScope = 0;  // Scope of synchronization (CTA ID, Grid ID, etc.)
-    
-    // ... existing members ...
-};
-
-class Executor {
+class PTXExecutor {
 public:
     // Constructor/destructor
-    Executor();
-    ~Executor();
+    PTXExecutor();
+    PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubsystem);
+    ~PTXExecutor();
 
     // Initialize the executor with parsed instructions
     bool initialize(const std::vector<PTXInstruction>& ptInstructions);
+    
+    // Initialize the executor with decoded instructions directly
+    bool initialize(const std::vector<DecodedInstruction>& decodedInstructions);
 
     // Execute the program
     bool execute();
@@ -160,46 +125,44 @@ public:
     const std::vector<DecodedInstruction>& getDecodedInstructions() const;
 
     // Get references to core components
-    RegisterBank& getRegisterBank() {
-        return *m_registerBank;
-    }
+    RegisterBank& getRegisterBank();
     
-    MemorySubsystem& getMemorySubsystem() {
-        return *m_memorySubsystem;
-    }
+    MemorySubsystem& getMemorySubsystem();
     
     // Get reference to warp scheduler
     WarpScheduler& getWarpScheduler() {
         return *m_warpScheduler;
     }
+    
+    // Get reference to predicate handler
+    PredicateHandler& getPredicateHandler() {
+        return *m_predicateHandler;
+    }
+    
+    // Get reference to reconvergence mechanism
+    ReconvergenceMechanism& getReconvergenceMechanism() {
+        return *m_reconvergence;
+    }
+    
+    // Get reference to instruction scheduler
+    InstructionScheduler& getInstructionScheduler() {
+        return m_instructionScheduler;
+    }
+    
+    // Get reference to performance counters
+    PerformanceCounters& getPerformanceCounters();
 
-    // Get current CTA and Grid IDs
-    uint32_t getCurrentCtaId() const { return m_currentCtaId; }
-    uint32_t getCurrentGridId() const { return m_currentGridId; }
-    
-    // Get divergence statistics
-    const DivergenceStats& getDivergenceStats() const {
-        return m_divergenceStats;
-    }
-    
-    // Set reconvergence algorithm
-    void setReconvergenceAlgorithm(ReconvergenceAlgorithm algorithm) {
-        m_reconvergenceAlgorithm = algorithm;
-    }
-    
 private:
     // Private implementation details
     class Impl;
     std::unique_ptr<Impl> pImpl;
     
-    // Core components
-    std::unique_ptr<RegisterBank> m_registerBank;
-    std::unique_ptr<MemorySubsystem> m_memorySubsystem;
+    // Direct pointers to core components for convenience
+    // These are also available through the Impl class
     std::unique_ptr<WarpScheduler> m_warpScheduler;
     std::unique_ptr<PredicateHandler> m_predicateHandler;
-    
-    // Divergence and reconvergence handling
     std::unique_ptr<ReconvergenceMechanism> m_reconvergence;
+    InstructionScheduler m_instructionScheduler;
     
     // Performance counters
     PerformanceCounters& m_performanceCounters;

@@ -77,6 +77,57 @@ public:
     // Initialize the host API
     bool initialize();
 
+    // Load a program from file
+    bool loadProgram(const std::string& filename);
+    
+    // Check if a program is loaded
+    bool isProgramLoaded() const;
+    
+    // Run the loaded program
+    bool run();
+    
+    // Step through the program
+    bool step();
+    
+    // Set a breakpoint
+    bool setBreakpoint(size_t address);
+    
+    // Set a watchpoint
+    bool setWatchpoint(uint64_t address);
+    
+    // Print registers
+    void printRegisters() const;
+    
+    // Print all registers
+    void printAllRegisters() const;
+    
+    // Print predicate registers
+    void printPredicateRegisters() const;
+    
+    // Print program counter
+    void printProgramCounter() const;
+    
+    // Print memory contents
+    void printMemory(uint64_t address, size_t size) const;
+    
+    // Start profiling
+    bool startProfiling(const std::string& filename);
+    
+    // Dump statistics
+    void dumpStatistics() const;
+    
+    // List instructions
+    void listInstructions(size_t start, size_t count) const;
+    
+    // Print warp visualization
+    void printWarpVisualization() const;
+    
+    // Print memory visualization
+    void printMemoryVisualization() const;
+    
+    // Print performance counters
+    void printPerformanceCounters() const;
+
     // CUDA-like API functions
     
     // Device management
@@ -104,14 +155,15 @@ public:
     CUresult cuMemcpyHtoD(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount);
     CUresult cuMemcpyDtoH(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount);
     
+    // Stream management
+    typedef void* CUstream;
+    
     // Kernel execution
     CUresult cuLaunchKernel(CUfunction f,
                           unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ,
                           unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ,
                           unsigned int sharedMemBytes, CUstream hStream, void** kernelParams, void** extra);
     
-    // Stream management
-    typedef void* CUstream;
     CUresult cuStreamCreate(CUstream* phStream, unsigned int flags);
     CUresult cuStreamQuery(CUstream hStream);
     CUresult cuStreamSynchronize(CUstream hStream);

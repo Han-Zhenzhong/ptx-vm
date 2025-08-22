@@ -70,14 +70,6 @@ public:
         }
     }
 
-    // Display prompt and get user input
-    std::string getCommandLine() {
-        std::cout << (m_loadedProgram.empty() ? "ptx-vm> " : ("ptx-vm(" + m_loadedProgram + ")> "));
-        std::string line;
-        std::getline(std::cin, line);
-        return line;
-    }
-
     // Parse command line into tokens
     std::vector<std::string> parseCommandLine(const std::string& commandLine) {
         std::vector<std::string> tokens;
@@ -256,6 +248,23 @@ public:
         }
     }
 
+    // Load a program
+    void loadProgram(const std::string& filename) {
+        // Load and execute the program
+        if (m_vm->loadAndExecuteProgram(filename)) {
+            m_loadedProgram = filename;
+            
+            // Reset execution state
+            resetExecutionState();
+        }
+    }
+
+    // Reset execution state
+    void resetExecutionState() {
+        m_currentPC = 0;
+        m_executing = false;
+    }
+
     // Run command - execute the loaded program
     void runCommand(const std::vector<std::string>& args) {
         if (m_loadedProgram.empty()) {
@@ -277,7 +286,7 @@ public:
         printMessage("Starting program execution...");
         
         // Execute the program
-        bool result = m_vm->execute();
+        bool result = m_vm->run();
         
         if (result) {
             printMessage("Program completed successfully.");
@@ -378,7 +387,7 @@ public:
             uint64_t address = std::stoull(args[0], nullptr, 0);
             
             // Set watchpoint
-            bool result = m_vm->getDebugger().setWatchpoint(address);
+            bool result = m_vm->setWatchpoint(address);
             
             if (result) {
                 std::ostringstream oss;
@@ -566,19 +575,19 @@ public:
         
         // Performance counters
         oss.str("");
-        oss << "Instructions executed: " << m_vm->getPerformanceCounters().getCount(PerformanceCounters::INSTRUCTIONS_EXECUTED);
+        oss << "Instructions executed: " << m_vm->getPerformanceCounters().getCounterValue(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
         printMessage(oss.str());
         
         oss.str("");
-        oss << "Total cycles: " << m_vm->getPerformanceCounters().getCount(PerformanceCounters::CYCLES);
+        oss << "Total cycles: " << m_vm->getPerformanceCounters().getCounterValue(PerformanceCounterIDs::CYCLES);
         printMessage(oss.str());
         
         oss.str("");
-        oss << "Divergent branches: " << m_vm->getPerformanceCounters().getCount(PerformanceCounters::DIVERGENT_BRANCHES);
+        oss << "Divergent branches: " << m_vm->getPerformanceCounters().getCounterValue(PerformanceCounterIDs::DIVERGENT_BRANCHES);
         printMessage(oss.str());
         
         oss.str("");
-        oss << "Register utilization: " << m_vm->getRegisterAllocator()->getRegisterUtilization() * 100 << "%";
+        oss << "Register utilization: " << m_vm->getRegisterAllocator().getRegisterUtilization() * 100 << "%";
         printMessage(oss.str());
     }
 
@@ -610,18 +619,18 @@ public:
 
     // Display prompt and get user input
     std::string getCommandLine() {
-        std::string line;
         std::cout << (m_loadedProgram.empty() ? "ptx-vm> " : ("ptx-vm(" + m_loadedProgram + ")> "));
+        std::string line;
         std::getline(std::cin, line);
         return line;
     }
 
     // Print message to console
-    void printMessage(const std::string& message, bool addNewline /*= true*/) {
+    void printMessage(const std::string& message, bool addNewline = true) {
         if (addNewline) {
             std::cout << message << std::endl;
         } else {
-            std::cout << message << std::endl;
+            std::cout << message;
         }
     }
 
@@ -662,23 +671,6 @@ public:
         }
     }
 
-    // Reset execution state
-    void resetExecutionState() {
-        m_currentPC = 0;
-        m_executing = false;
-        
-        // Get reference to executor
-        PTXExecutor& executor = m_vm->getExecutor();
-        
-        // Get warp scheduler
-        WarpScheduler& scheduler = executor.getWarpScheduler();
-        
-        // Initialize execution state
-        m_numWarps = scheduler.getNumWarps();
-        m_threadsPerWarp = scheduler.getThreadsPerWarp();
-        
-        // In real implementation, this would get the actual execution state
-    }
 
     // Update execution state
     void updateExecutionState() {
@@ -696,6 +688,9 @@ public:
     bool m_executing = false;
     uint32_t m_numWarps = 0;
     uint32_t m_threadsPerWarp = 0;
+    
+    // Kernel parameters
+    std::vector<std::string> m_kernelParams;
 };
 
 CLIInterface::CLIInterface() : pImpl(std::make_unique<Impl>()) {}
@@ -711,5 +706,128 @@ int CLIInterface::run(int argc, char* argv[]) {
 }
 
 int CLIInterface::executeCommand(const std::string& command, const std::vector<std::string>& args) {
-    return pImpl->executeCommand(command, args);
+    // Convert command to lowercase
+    std::string cmd = command;
+    std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
+    
+    // Dispatch to appropriate command handler
+    if (cmd == "help" || cmd == "?") {
+        pImpl->helpCommand(args);
+    } else if (cmd == "load") {
+        pImpl->loadCommand(args);
+    } else if (cmd == "run") {
+        pImpl->runCommand(args);
+    } else if (cmd == "step") {
+        pImpl->stepCommand(args);
+    } else if (cmd == "break" || cmd == "b") {
+        pImpl->breakCommand(args);
+    } else if (cmd == "watch" || cmd == "w") {
+        pImpl->watchCommand(args);
+    } else if (cmd == "register" || cmd == "reg" || cmd == "r") {
+        pImpl->registerCommand(args);
+    } else if (cmd == "memory" || cmd == "mem" || cmd == "m") {
+        pImpl->memoryCommand(args);
+    } else if (cmd == "profile") {
+        pImpl->profileCommand(args);
+    } else if (cmd == "dump") {
+        pImpl->dumpCommand(args);
+    } else if (cmd == "list" || cmd == "l") {
+        pImpl->listCommand(args);
+    } else if (cmd == "quit" || cmd == "exit" || cmd == "q") {
+        pImpl->quitCommand(args);
+        return 1;  // Signal to quit
+    } else if (cmd == "clear" || cmd == "cls") {
+        pImpl->clearCommand(args);
+    } else if (cmd == "version") {
+        pImpl->versionCommand(args);
+    } else if (cmd == "info") {
+        pImpl->infoCommand(args);
+    } else if (cmd == "disassemble" || cmd == "disas") {
+        pImpl->disassembleCommand(args);
+    } else if (cmd == "threads") {
+        pImpl->threadsCommand(args);
+    } else if (cmd == "warps") {
+        pImpl->warpsCommand(args);
+    } else {
+        std::ostringstream oss;
+        oss << "Unknown command: " << command << ". Type 'help' for available commands.";
+        pImpl->printError(oss.str());
+    }
+    
+    return 0;  // Continue running
+}
+
+// Help command - display available commands
+void CLIInterface::helpCommand(const std::vector<std::string>& args) {
+    pImpl->helpCommand(args);
+}
+
+// Load command - load a PTX program
+void CLIInterface::loadCommand(const std::vector<std::string>& args) {
+    pImpl->loadCommand(args);
+}
+
+// Run command - execute the loaded program
+void CLIInterface::runCommand(const std::vector<std::string>& args) {
+    pImpl->runCommand(args);
+}
+
+// Step command - execute one instruction
+void CLIInterface::stepCommand(const std::vector<std::string>& args) {
+    pImpl->stepCommand(args);
+}
+
+// Break command - set a breakpoint
+void CLIInterface::breakCommand(const std::vector<std::string>& args) {
+    pImpl->breakCommand(args);
+}
+
+// Watch command - set a watchpoint
+void CLIInterface::watchCommand(const std::vector<std::string>& args) {
+    pImpl->watchCommand(args);
+}
+
+// Register command - display/register information
+void CLIInterface::registerCommand(const std::vector<std::string>& args) {
+    pImpl->registerCommand(args);
+}
+
+// Memory command - display memory information
+void CLIInterface::memoryCommand(const std::vector<std::string>& args) {
+    pImpl->memoryCommand(args);
+}
+
+// Profiling command - control profiling
+void CLIInterface::profileCommand(const std::vector<std::string>& args) {
+    pImpl->profileCommand(args);
+}
+
+// Dump command - dump execution statistics
+void CLIInterface::dumpCommand(const std::vector<std::string>& args) {
+    pImpl->dumpCommand(args);
+}
+
+// List command - list loaded program
+void CLIInterface::listCommand(const std::vector<std::string>& args) {
+    pImpl->listCommand(args);
+}
+
+// Quit command - exit the VM
+void CLIInterface::quitCommand(const std::vector<std::string>& args) {
+    pImpl->quitCommand(args);
+}
+
+// Display prompt and get user input
+std::string CLIInterface::getCommandLine() {
+    return pImpl->getCommandLine();
+}
+
+// Print message to console
+void CLIInterface::printMessage(const std::string& message) {
+    pImpl->printMessage(message);
+}
+
+// Print error message to console
+void CLIInterface::printError(const std::string& message) {
+    pImpl->printError(message);
 }

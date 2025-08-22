@@ -4,7 +4,8 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
-#include "include/instruction_types.hpp"
+#include "instruction_types.hpp"
+#include <unordered_map>
 
 class InstructionScheduler;
 
@@ -66,10 +67,10 @@ public:
                             uint32_t threadsPerWarp = 32);
 
     // Get instruction latency information
-    size_t getInstructionLatency(InstructionType type) const;
+    size_t getInstructionLatency(InstructionTypes type) const;
 
     // Set instruction latency information
-    void setInstructionLatency(InstructionType type, size_t cycles);
+    void setInstructionLatency(InstructionTypes type, size_t cycles);
 
     // Get register usage information for an instruction
     void getRegisterUsage(const DecodedInstruction& instruction,

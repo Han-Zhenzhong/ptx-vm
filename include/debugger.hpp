@@ -5,13 +5,16 @@
 #include <vector>
 #include <unordered_map>
 #include <string>
+#include <memory>
 #include "registers/register_bank.hpp"
 #include "memory/memory.hpp"
+#include "execution/executor.hpp"
 
-// Forward declarations
-class PTXExecutor;
+// Forward declaration of implementation class
+class DebuggerImpl;
 
 class Debugger {
+
 public:
     // Constructor/destructor
     Debugger(PTXExecutor* executor);
@@ -52,17 +55,16 @@ public:
 
     // Print warp execution visualization
     void printWarpVisualization() const;
-    
+
     // Print memory access visualization
     void printMemoryVisualization() const;
-    
+
     // Print performance counter display
     void printPerformanceCounters() const;
 
 private:
-    // Private implementation details
-    class Impl;
-    std::unique_ptr<Impl> pImpl;
+    // Pimpl idiom - pointer to implementation
+    std::unique_ptr<DebuggerImpl> pImpl;
 };
 
 #endif // DEBUGGER_HPP

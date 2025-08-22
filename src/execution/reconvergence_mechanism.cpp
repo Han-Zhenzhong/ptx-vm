@@ -3,6 +3,21 @@
 #include <stdexcept>
 #include <algorithm>
 
+// Structure to track execution state
+struct ExecutionState {
+    size_t pc;           // Program counter
+    uint64_t activeMask; // Active threads mask
+    size_t cycle;        // Cycle number
+};
+
+// Structure to track divergence stack entries
+struct DivergenceStackEntry {
+    size_t joinPC;              // PC where threads should reconverge
+    uint64_t activeMask;        // Mask of threads that need to reconverge
+    uint64_t divergentMask;     // Mask of threads that took the branch
+    bool isJoinPointValid;      // Whether the join point is valid
+};
+
 // Private implementation class
 class ReconvergenceMechanism::Impl {
 public:
@@ -46,6 +61,7 @@ public:
 
     // Handle a branch instruction and track divergence
     bool handleBranch(const DecodedInstruction& instruction, 
+                     size_t instructionIndex,
                      size_t& nextPC, 
                      uint64_t& activeMask,
                      uint64_t threadMask) {
@@ -92,19 +108,19 @@ public:
         // Handle according to current algorithm
         switch (m_algorithm) {
             case RECONVERGENCE_ALGORITHM_BASIC:
-                basicReconvergence(instruction, nextPC, activeMask, takeBranch, threadMask);
+                basicReconvergence(instruction, instructionIndex, nextPC, activeMask, takeBranch, threadMask);
                 break;
                 
             case RECONVERGENCE_ALGORITHM_CFG_BASED:
-                cfgBasedReconvergence(instruction, nextPC, activeMask, takeBranch, threadMask);
+                cfgBasedReconvergence(instruction, instructionIndex, nextPC, activeMask, takeBranch, threadMask);
                 break;
                 
             case RECONVERGENCE_ALGORITHM_STACK_BASED:
-                stackBasedReconvergence(instruction, nextPC, activeMask, takeBranch, threadMask);
+                stackBasedReconvergence(instruction, instructionIndex, nextPC, activeMask, takeBranch, threadMask);
                 break;
                 
             default:
-                basicReconvergence(instruction, nextPC, activeMask, takeBranch, threadMask);
+                basicReconvergence(instruction, instructionIndex, nextPC, activeMask, takeBranch, threadMask);
                 break;
         }
         
@@ -223,6 +239,7 @@ public:
 private:
     // Basic reconvergence algorithm
     void basicReconvergence(const DecodedInstruction& instruction, 
+                           size_t instructionIndex,
                            size_t& nextPC, 
                            uint64_t& activeMask,
                            bool takeBranch,
@@ -261,6 +278,7 @@ private:
 
     // Control Flow Graph-based reconvergence algorithm
     void cfgBasedReconvergence(const DecodedInstruction& instruction, 
+                              size_t instructionIndex,
                               size_t& nextPC, 
                               uint64_t& activeMask,
                               bool takeBranch,
@@ -317,6 +335,7 @@ private:
 
     // Stack-based predication reconvergence algorithm
     void stackBasedReconvergence(const DecodedInstruction& instruction, 
+                                size_t instructionIndex,
                                 size_t& nextPC, 
                                 uint64_t& activeMask,
                                 bool takeBranch,
@@ -421,10 +440,11 @@ void ReconvergenceMechanism::reset() {
 }
 
 bool ReconvergenceMechanism::handleBranch(const DecodedInstruction& instruction, 
+                                         size_t instructionIndex,
                                          size_t& nextPC, 
                                          uint64_t& activeMask,
                                          uint64_t threadMask) {
-    return pImpl->handleBranch(instruction, nextPC, activeMask, threadMask);
+    return pImpl->handleBranch(instruction, instructionIndex, nextPC, activeMask, threadMask);
 }
 
 void ReconvergenceMechanism::updateExecutionState(size_t currentPC, uint64_t activeMask) {

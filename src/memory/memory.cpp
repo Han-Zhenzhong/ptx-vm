@@ -3,6 +3,9 @@
 #include <cstring>
 #include <algorithm>
 #include <iostream>
+#include "memory_optimizer.hpp"
+#include <cstddef>  // For size_t
+#include <cstdint>  // For uintX_t types
 
 // Private implementation class
 class MemorySubsystem::Impl {
@@ -13,6 +16,37 @@ public:
         size_t size;          // Size of the memory space
         bool ownsBuffer;      // Does this class own the buffer?
     };
+    
+    // Template methods for memory access
+    template <typename T>
+    T read(MemorySpace space, AddressSpace address) const {
+        auto it = memorySpaces.find(space);
+        if (it == memorySpaces.end()) {
+            throw std::invalid_argument("Invalid memory space");
+        }
+    
+        if (address + sizeof(T) > it->second.size) {
+            throw std::out_of_range("Memory address out of range");
+        }
+    
+        T value;
+        std::memcpy(&value, static_cast<uint8_t*>(it->second.buffer) + address, sizeof(T));
+        return value;
+    }
+    
+    template <typename T>
+    void write(MemorySpace space, AddressSpace address, const T& value) {
+        auto it = memorySpaces.find(space);
+        if (it == memorySpaces.end()) {
+            throw std::invalid_argument("Invalid memory space");
+        }
+    
+        if (address + sizeof(T) > it->second.size) {
+            throw std::out_of_range("Memory address out of range");
+        }
+    
+        std::memcpy(static_cast<uint8_t*>(it->second.buffer) + address, &value, sizeof(T));
+    }
 
     // Memory space information
     std::unordered_map<MemorySpace, MemorySpaceInfo> memorySpaces;
@@ -20,7 +54,7 @@ public:
     // TLB and virtual memory support
     std::vector<TlbEntry> tlb;
     std::unordered_map<uint64_t, PageTableEntry> pageTable;
-    TlbConfig tlbConfig;
+    TLBConfig tlbConfig;
     PageFaultHandler pageFaultHandler;
     
     // TLB statistics
@@ -120,11 +154,11 @@ bool MemorySubsystem::initialize(size_t globalMemorySize,
             return false; // Allocation failed
         }
 
-        pImpl->memorySpaces[MemorySpace::GLOBAL] = {
-            .buffer = globalBuffer,
-            .size = globalMemorySize,
-            .ownsBuffer = true
-        };
+        Impl::MemorySpaceInfo info;
+        info.buffer = globalBuffer;
+        info.size = globalMemorySize;
+        info.ownsBuffer = true;
+        pImpl->memorySpaces[MemorySpace::GLOBAL] = info;
     }
 
     // Initialize shared memory
@@ -138,11 +172,11 @@ bool MemorySubsystem::initialize(size_t globalMemorySize,
             return false; // Allocation failed
         }
 
-        pImpl->memorySpaces[MemorySpace::SHARED] = {
-            .buffer = sharedBuffer,
-            .size = sharedMemorySize,
-            .ownsBuffer = true
-        };
+        Impl::MemorySpaceInfo info;
+        info.buffer = sharedBuffer;
+        info.size = sharedMemorySize;
+        info.ownsBuffer = true;
+        pImpl->memorySpaces[MemorySpace::SHARED] = info;
     }
 
     // Initialize local memory
@@ -159,15 +193,20 @@ bool MemorySubsystem::initialize(size_t globalMemorySize,
             return false; // Allocation failed
         }
 
-        pImpl->memorySpaces[MemorySpace::LOCAL] = {
-            .buffer = localBuffer,
-            .size = localMemorySize,
-            .ownsBuffer = true
-        };
+        Impl::MemorySpaceInfo info;
+        info.buffer = localBuffer;
+        info.size = localMemorySize;
+        info.ownsBuffer = true;
+        pImpl->memorySpaces[MemorySpace::LOCAL] = info;
     }
 
     return true;
 }
+
+#ifndef MEMORY_TEMPLATE_HPP
+#define MEMORY_TEMPLATE_HPP
+
+#include "memory.hpp"
 
 template <typename T>
 T MemorySubsystem::read(MemorySpace space, AddressSpace address) const {
@@ -199,6 +238,18 @@ void MemorySubsystem::write(MemorySpace space, AddressSpace address, const T& va
     std::memcpy(static_cast<uint8_t*>(it->second.buffer) + address, &value, sizeof(T));
 }
 
+#endif // MEMORY_TEMPLATE_HPP
+
+// Explicit template instantiations for commonly used types
+template uint8_t MemorySubsystem::read<uint8_t>(MemorySpace, AddressSpace) const;
+template uint16_t MemorySubsystem::read<uint16_t>(MemorySpace, AddressSpace) const;
+template uint32_t MemorySubsystem::read<uint32_t>(MemorySpace, AddressSpace) const;
+template uint64_t MemorySubsystem::read<uint64_t>(MemorySpace, AddressSpace) const;
+template void MemorySubsystem::write<uint8_t>(MemorySpace, AddressSpace, const uint8_t&);
+template void MemorySubsystem::write<uint16_t>(MemorySpace, AddressSpace, const uint16_t&);
+template void MemorySubsystem::write<uint32_t>(MemorySpace, AddressSpace, const uint32_t&);
+template void MemorySubsystem::write<uint64_t>(MemorySpace, AddressSpace, const uint64_t&);
+
 void* MemorySubsystem::getMemoryBuffer(MemorySpace space) {
     auto it = pImpl->memorySpaces.find(space);
     if (it == pImpl->memorySpaces.end()) {
@@ -218,7 +269,7 @@ size_t MemorySubsystem::getMemorySize(MemorySpace space) const {
 }
 
 // TLB management
-void MemorySubsystem::configureTlb(const TlbConfig& config) {
+void MemorySubsystem::configureTlb(const TLBConfig& config) {
     pImpl->tlbConfig = config;
     
     // Resize TLB if needed

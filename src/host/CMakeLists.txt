@@ -1,10 +1,7 @@
 # Host API module
 add_library(host STATIC
-    host_api.hpp
     host_api.cpp
-    cli_interface.hpp
     cli_interface.cpp
-    cuda_binary_loader.hpp
     cuda_binary_loader.cpp
 )
 
@@ -24,6 +21,4 @@ set(SRCS
 target_link_libraries(host PRIVATE
     core
     optimizer
-    # 添加对host模块自身的引用
-    host
 )

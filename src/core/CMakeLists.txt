@@ -1,8 +1,6 @@
 # Core VM module
 add_library(core STATIC
-    vm.hpp
     vm.cpp
-    performance_counters.hpp
     performance_counters.cpp
 )
 
@@ -18,4 +16,5 @@ target_link_libraries(core PRIVATE
     debugger
     optimizer
     host
+    registers
 )
