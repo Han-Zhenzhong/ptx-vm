@@ -3,6 +3,8 @@
 ## Introduction
 This document provides essential information for developers working on the PTX Virtual Machine project. It covers code structure, contribution guidelines, build instructions, and other important details to help new contributors get started.
 
+For information about future development plans, please refer to the [Next Phase Development Plan](docs/next_phase_development_plan.md).
+
 ## Code Structure Overview
 
 ### Directory Layout
@@ -247,6 +249,84 @@ The VM uses a SIMT execution model similar to real GPUs:
 - Predicates determine which threads execute each instruction
 - Branches can cause warps to diverge
 - Divergent paths must be reconverged
+
+## Parameter Passing Mechanism
+
+### Overview
+The PTX VM now supports enhanced parameter passing mechanisms for kernel execution. This allows users to pass data directly to kernels, similar to how parameters are passed in real CUDA applications.
+
+### Implementation Details
+
+#### Data Structures
+- `KernelParameter`: Represents a single kernel parameter with device pointer, size, and offset information
+- `KernelLaunchParams`: Contains kernel launch configuration including grid/block dimensions and parameter list
+
+#### Memory Management
+Parameters are stored in a dedicated parameter memory space starting at address `0x1000`. Each parameter is sequentially stored with proper alignment.
+
+#### API Functions
+- `cuLaunchKernel`: Main function for launching kernels with parameters
+- `cuMemAlloc`: Allocate memory in the VM
+- `cuMemcpyHtoD`/`cuMemcpyDtoH`: Copy data between host and device memory
+
+#### CLI Commands
+- `alloc <size>`: Allocate memory in VM
+- `memcpy <dest> <src> <size>`: Copy memory within VM
+- `launch <kernel> [params]`: Launch kernel with parameters
+
+### Usage Examples
+
+#### Host API Usage
+``cpp
+// Allocate memory for parameters
+CUdeviceptr inputPtr, outputPtr;
+cuMemAlloc(&inputPtr, 1024 * sizeof(int));
+cuMemAlloc(&outputPtr, 1024 * sizeof(int));
+
+// Copy data to VM
+std::vector<int> inputData(1024);
+// ... populate inputData ...
+cuMemcpyHtoD(inputPtr, inputData.data(), 1024 * sizeof(int));
+
+// Launch kernel with parameters
+std::vector<void*> kernelParams = {
+    reinterpret_cast<void*>(inputPtr),
+    reinterpret_cast<void*>(outputPtr),
+    nullptr
+};
+
+cuLaunchKernel(
+    functionHandle,
+    1, 1, 1,     // Grid dimensions
+    32, 1, 1,    // Block dimensions
+    0,           // Shared memory
+    nullptr,     // Stream
+    kernelParams.data(),
+    nullptr
+);
+```
+
+#### CLI Usage
+``bash
+# Allocate memory
+> alloc 4096
+Allocated 4096 bytes at address 0x10000
+
+# Copy data (example)
+> memcpy 0x10000 0x20000 1024
+
+# Launch kernel with parameters
+> launch myKernel 0x10000 0x10100
+Launching kernel: myKernel
+Kernel launched successfully
+```
+
+### Implementation Files
+- `src/host/host_api.cpp`: Implementation of CUDA-like API functions
+- `src/core/vm.cpp`: Core VM parameter handling
+- `src/host/cli_interface.cpp`: CLI command implementations
+- `include/vm.hpp`: VM class definition with parameter handling methods
+- `include/host_api.hpp`: Host API interface definitions
 
 ## Development Practices
 

@@ -44,6 +44,15 @@ public:
     // Memory command - display memory information
     void memoryCommand(const std::vector<std::string>& args);
 
+    // Alloc command - allocate memory
+    void allocCommand(const std::vector<std::string>& args);
+
+    // Memcpy command - copy memory
+    void memcpyCommand(const std::vector<std::string>& args);
+
+    // Launch command - launch a kernel with parameters
+    void launchCommand(const std::vector<std::string>& args);
+
     // Profiling command - control profiling
     void profileCommand(const std::vector<std::string>& args);
 

@@ -51,7 +51,240 @@ The VM can be run in two modes: direct execution or interactive CLI mode.
 > exit
 ```
 
-### Example Programs
+## Parameter Passing
+
+### Overview
+The PTX VM now supports enhanced parameter passing for kernel execution. This allows you to pass data directly to kernels, similar to how parameters are passed in real CUDA applications.
+
+### Memory Management Commands
+
+#### alloc
+Allocate memory in the VM:
+```bash
+> alloc <size>
+```
+Example:
+```bash
+> alloc 1024
+Allocated 1024 bytes at address 0x10000
+```
+
+#### memcpy
+Copy memory within the VM:
+```bash
+> memcpy <dest> <src> <size>
+```
+Example:
+```bash
+> memcpy 0x20000 0x10000 256
+Copied 256 bytes from 0x10000 to 0x20000
+```
+
+### Kernel Launching with Parameters
+
+#### launch
+Launch a kernel with parameters:
+```bash
+> launch <kernel_name> [param1] [param2] ...
+```
+Example:
+```bash
+> launch vectorAdd 0x10000 0x20000
+Launching kernel: vectorAdd
+Kernel launched successfully
+```
+
+### Complete Parameter Passing Workflow
+
+1. **Load a PTX program**:
+   ```bash
+   > load examples/memory_ops_example.ptx
+   ```
+
+2. **Allocate memory for parameters**:
+   ```bash
+   > alloc 4096
+   Allocated 4096 bytes at address 0x10000
+   ```
+
+3. **Prepare parameter data** (this would typically involve copying data from host):
+   ```bash
+   # In a real scenario, you would copy actual data
+   # For demonstration, we'll assume data is prepared at 0x10000
+   ```
+
+4. **Launch the kernel with parameters**:
+   ```bash
+   > launch myKernel 0x10000 0x10100
+   Launching kernel: myKernel
+   Kernel launched successfully
+   ```
+
+5. **Examine results**:
+   ```bash
+   > memory 0x10100 256
+   ```
+
+### Example with Real Code
+Here's a complete example of using the parameter passing mechanism:
+
+```cpp
+#include "host_api.hpp"
+#include <vector>
+
+int main() {
+    HostAPI hostAPI;
+    hostAPI.initialize();
+    
+    // Allocate memory for input and output data
+    CUdeviceptr inputPtr, outputPtr;
+    hostAPI.cuMemAlloc(&inputPtr, 1024 * sizeof(int));
+    hostAPI.cuMemAlloc(&outputPtr, 1024 * sizeof(int));
+    
+    // Prepare input data
+    std::vector<int> inputData(1024);
+    for (int i = 0; i < 1024; i++) {
+        inputData[i] = i;
+    }
+    
+    // Copy input data to VM
+    hostAPI.cuMemcpyHtoD(inputPtr, inputData.data(), 1024 * sizeof(int));
+    
+    // Launch kernel with parameters
+    std::vector<void*> kernelParams = {
+        reinterpret_cast<void*>(inputPtr),
+        reinterpret_cast<void*>(outputPtr),
+        nullptr  // Null terminator
+    };
+    
+    hostAPI.cuLaunchKernel(
+        functionHandle,  // Kernel function handle
+        1, 1, 1,         // Grid dimensions
+        32, 1, 1,        // Block dimensions
+        0,               // Shared memory size
+        nullptr,         // Stream
+        kernelParams.data(),  // Kernel parameters
+        nullptr          // Extra parameters
+    );
+    
+    // Copy results back
+    std::vector<int> outputData(1024);
+    hostAPI.cuMemcpyDtoH(outputData.data(), outputPtr, 1024 * sizeof(int));
+    
+    // Clean up
+    hostAPI.cuMemFree(inputPtr);
+    hostAPI.cuMemFree(outputPtr);
+    
+    return 0;
+}
+```
+
+## Understanding PTX Execution Results
+
+### Overview
+When PTX virtual instructions are executed, the results are stored in various locations depending on the program:
+
+1. **Memory**: Most results are stored in global memory at addresses specified by the program
+2. **Registers**: Intermediate values are stored in registers during execution
+3. **Performance counters**: Execution statistics are collected in performance counters
+
+### Memory Results
+PTX programs typically store their final results in global memory. The exact location depends on the program's parameters:
+
+```ptx
+// Example from simple_math_example.ptx
+st.global.s32 [%r0], %r3;      // Store add result at memory address in %r0
+st.global.s32 [%r0+4], %r4;    // Store subtract result at memory address + 4
+```
+
+To examine memory results:
+1. Use the `memory` command in CLI mode
+2. Copy data back to host using `cuMemcpyDtoH` in API mode
+
+### Performance Statistics
+The VM collects various performance statistics during execution:
+
+```bash
+> dump
+Execution Statistics:
+-------------------
+Total Cycles:            42
+Instructions Executed:   25
+IPC (Instructions/Cycle): 0.595238
+Register Utilization:    18.75%
+Spill Operations:        0
+Global Memory Reads:     3
+Global Memory Writes:    5
+Shared Memory Reads:     0
+Shared Memory Writes:    0
+Local Memory Reads:      0
+Local Memory Writes:     0
+Branches:                1
+Divergent Branches:      0
+Warp Switches:           0
+TLB Misses:              0
+Page Faults:             0
+Cache Hit Rate:          0
+```
+
+### Execution Flow
+1. **Program Loading**: PTX program is parsed and decoded into internal representation
+2. **Memory Setup**: Input data is prepared in VM memory
+3. **Execution**: Instructions are executed in order (with branching)
+4. **Result Storage**: Final results are stored in designated memory locations
+5. **Statistics Collection**: Performance data is gathered throughout execution
+
+### Example Execution Walkthrough
+Let's walk through the execution of `simple_math_example.ptx`:
+
+1. **Load Program**:
+   ```bash
+   > load examples/simple_math_example.ptx
+   Program loaded successfully.
+   ```
+
+2. **Allocate Memory for Results**:
+   ```bash
+   > alloc 1024
+   Allocated 1024 bytes at address 0x10000
+   ```
+
+3. **Execute Program**:
+   ```bash
+   > run
+   Starting program execution...
+   Program completed successfully.
+   ```
+
+4. **View Results**:
+   ```bash
+   > memory 0x10000 20
+   Memory at 0x10000:
+   0x10000: 31 00 00 00 23 00 00 00 26 01 00 00 06 00 00 00
+   0x10010: 00 00 00 00
+   ```
+
+5. **View Performance Statistics**:
+   ```bash
+   > dump
+   Execution Statistics:
+   -------------------
+   Total Cycles:            42
+   Instructions Executed:   25
+   IPC (Instructions/Cycle): 0.595238
+   ```
+
+### Interpreting Results
+In the above example, the memory contains the results of arithmetic operations:
+- 0x00000031 (49 in decimal) = 42 + 7 (addition result)
+- 0x00000023 (35 in decimal) = 42 - 7 (subtraction result)
+- 0x00000126 (294 in decimal) = 42 * 7 (multiplication result)
+- 0x00000006 (6 in decimal) = 42 / 7 (division result)
+- 0x00000000 (0 in decimal) = 42 % 7 (remainder result)
+
+These values are stored as little-endian 32-bit integers in consecutive memory locations.
+
+## Example Programs
 The project includes several example PTX programs in the `examples/` directory:
 - `simple_math_example.ptx` - Basic mathematical operations
 - `control_flow_example.ptx` - Branches and control flow

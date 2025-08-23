@@ -32,34 +32,87 @@ public:
     std::string m_programFilename;
 };
 
-PTXVM::PTXVM() : pImpl(std::make_unique<Impl>()) {
-    // Allocate registers for a simple configuration
-    pImpl->m_registerBank = std::make_unique<RegisterBank>();
-    if (!pImpl->m_registerBank->initialize(32)) {
-        throw std::runtime_error("Failed to initialize register bank");
-    }
-    
-    // Create memory subsystem
-    pImpl->m_memorySubsystem = std::unique_ptr<::MemorySubsystem, MemorySubsystemDeleter>(new ::MemorySubsystem());
-    if (!pImpl->m_memorySubsystem->initialize(1024 * 1024, 64 * 1024, 64 * 1024)) {
-        throw std::runtime_error("Failed to initialize memory subsystem");
-    }
-    
-    // Create executor
-    pImpl->m_executor = std::make_unique<PTXExecutor>(*pImpl->m_registerBank, *pImpl->m_memorySubsystem);
-    // Note: Executor will be initialized later with actual instructions in loadAndExecuteProgram
-    
-    // Create performance counters
-    pImpl->m_performanceCounters = std::make_unique<PerformanceCounters>();
-    
-    // Create debugger
-    pImpl->m_debugger = std::make_unique<Debugger>(pImpl->m_executor.get());
-    
-    // Create register allocator
-    pImpl->m_registerAllocator = std::make_unique<RegisterAllocator>(this);
+PTXVM::PTXVM() : pImpl(std::make_unique<Impl>()),
+                 m_registerBank(std::make_unique<RegisterBank>()),
+                 m_memorySubsystem(nullptr, MemorySubsystemDeleter()), // Will be initialized in initialize()
+                 m_executor(std::make_unique<PTXExecutor>(*m_registerBank)),
+                 m_performanceCounters(std::make_unique<PerformanceCounters>()),
+                 m_debugger(std::make_unique<Debugger>(*m_executor)),
+                 m_registerAllocator(std::make_unique<RegisterAllocator>()),
+                 m_currentKernelName(""),
+                 m_nextMemoryAddress(0x10000), // Start allocating at 64KB
+                 m_parameterMemoryOffset(0) {
+    // Initialize memory subsystem
+    m_memorySubsystem = std::unique_ptr<::MemorySubsystem, MemorySubsystemDeleter>(
+        new ::MemorySubsystem()
+    );
 }
 
 PTXVM::~PTXVM() = default;
+
+void PTXVM::setKernelName(const std::string& name) {
+    m_currentKernelName = name;
+}
+
+void PTXVM::setKernelLaunchParams(const KernelLaunchParams& params) {
+    m_kernelLaunchParams = params;
+}
+
+void PTXVM::setKernelParameters(const std::vector<KernelParameter>& parameters) {
+    m_kernelParameters = parameters;
+}
+
+bool PTXVM::setupKernelParameters() {
+    // Setup kernel parameters in VM memory
+    // In a real implementation, this would:
+    // 1. Allocate parameter memory space
+    // 2. Copy parameter data to that space
+    // 3. Set up parameter mappings for the kernel to access
+    
+    CUdeviceptr paramBaseAddr = PARAMETER_MEMORY_BASE;
+    
+    for (size_t i = 0; i < m_kernelParameters.size(); ++i) {
+        const auto& param = m_kernelParameters[i];
+        
+        // Copy parameter data from device memory to parameter memory space
+        try {
+            for (size_t j = 0; j < param.size; ++j) {
+                uint8_t value = m_memorySubsystem->read<uint8_t>(MemorySpace::GLOBAL, param.devicePtr + j);
+                m_memorySubsystem->write<uint8_t>(MemorySpace::GLOBAL, paramBaseAddr + param.offset + j, value);
+            }
+        } catch (...) {
+            std::cerr << "Failed to copy parameter " << i << " to parameter memory space" << std::endl;
+            return false;
+        }
+    }
+    
+    std::cout << "Set up " << m_kernelParameters.size() << " kernel parameters in memory" << std::endl;
+    return true;
+}
+
+bool PTXVM::launchKernel() {
+    // For now, just run the loaded program
+    // In a full implementation, this would:
+    // 1. Set up the execution context with the kernel launch parameters
+    // 2. Pass kernel parameters to the appropriate memory locations
+    // 3. Execute the specific kernel function
+    
+    std::cout << "Launching kernel: " << m_currentKernelName << std::endl;
+    std::cout << "Grid dimensions: " << m_kernelLaunchParams.gridDimX << " x " 
+              << m_kernelLaunchParams.gridDimY << " x " << m_kernelLaunchParams.gridDimZ << std::endl;
+    std::cout << "Block dimensions: " << m_kernelLaunchParams.blockDimX << " x " 
+              << m_kernelLaunchParams.blockDimY << " x " << m_kernelLaunchParams.blockDimZ << std::endl;
+    std::cout << "Shared memory: " << m_kernelLaunchParams.sharedMemBytes << " bytes" << std::endl;
+    std::cout << "Parameters: " << m_kernelLaunchParams.parameters.size() << " parameters" << std::endl;
+    
+    // If we have parameters, make sure they are set up
+    if (!m_kernelParameters.empty()) {
+        setupKernelParameters();
+    }
+    
+    // Execute the program
+    return pImpl->m_executor->execute();
+}
 
 bool PTXVM::initialize() {
     // Already initialized in constructor
@@ -150,4 +203,57 @@ void PTXVM::dumpMemoryAccessAnalysis() {
 // Dump warp execution analysis
 void PTXVM::dumpWarpExecutionAnalysis() {
     // Implementation moved to vm_profiler.cpp
+}
+
+CUdeviceptr PTXVM::allocateMemory(size_t size) {
+    // Align to 8-byte boundary
+    size = (size + 7) & ~7;
+    
+    CUdeviceptr address = m_nextMemoryAddress;
+    m_memoryAllocations[address] = size;
+    m_nextMemoryAddress += size;
+    
+    return address;
+}
+
+bool PTXVM::freeMemory(CUdeviceptr ptr) {
+    auto it = m_memoryAllocations.find(ptr);
+    if (it != m_memoryAllocations.end()) {
+        m_memoryAllocations.erase(it);
+        return true;
+    }
+    return false;
+}
+
+bool PTXVM::copyMemoryHtoD(CUdeviceptr dst, const void* src, size_t size) {
+    if (!src) return false;
+    
+    try {
+        for (size_t i = 0; i < size; ++i) {
+            const uint8_t* srcBytes = static_cast<const uint8_t*>(src);
+            m_memorySubsystem->write<uint8_t>(MemorySpace::GLOBAL, dst + i, srcBytes[i]);
+        }
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool PTXVM::copyMemoryDtoH(void* dst, CUdeviceptr src, size_t size) {
+    if (!dst) return false;
+    
+    try {
+        for (size_t i = 0; i < size; ++i) {
+            uint8_t value = m_memorySubsystem->read<uint8_t>(MemorySpace::GLOBAL, src + i);
+            uint8_t* dstBytes = static_cast<uint8_t*>(dst);
+            dstBytes[i] = value;
+        }
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+const std::map<CUdeviceptr, size_t>& PTXVM::getMemoryAllocations() const {
+    return m_memoryAllocations;
 }

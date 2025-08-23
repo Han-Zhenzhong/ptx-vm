@@ -17,6 +17,7 @@ set(DOCS
     docs/memory_optimization_examples.md
     docs/divergence_performance_testing.md
     docs/divergence_handling_examples.md
+    docs/next_phase_development_plan.md
 )
 
 # Create documentation target
@@ -24,4 +25,3 @@ add_custom_target(docs
     COMMAND ${CMAKE_COMMAND} -E echo "Documentation is available in markdown format"
     COMMAND ${CMAKE_COMMAND} -E echo "Use markdown viewer or converter to view documentation"
 )
-

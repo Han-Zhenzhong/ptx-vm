@@ -188,6 +188,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - [Memory Optimization Examples](docs/memory_optimization_examples.md) - Example programs for memory optimization testing
 - [Divergence Performance Testing](docs/divergence_performance_testing.md) - Performance testing framework for divergence handling
 - [Visualization Features](docs/visualization_features.md) - Details on visualization capabilities
+- [Next Phase Development Plan](docs/next_phase_development_plan.md) - Plans for future development
 
 The documentation covers architecture, code structure, contribution guidelines, and technical details of implementation.
 

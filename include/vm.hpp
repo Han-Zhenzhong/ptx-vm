@@ -3,6 +3,9 @@
 
 #include <memory>
 #include <fstream>
+#include <vector>
+#include <map>
+#include <string>
 #include "registers/register_bank.hpp"
 #include "execution/executor.hpp"
 #include "performance_counters.hpp"
@@ -14,6 +17,22 @@
 // This prevents the compiler from trying to generate a default deleter which requires complete type
 struct MemorySubsystemDeleter {
     void operator()(::MemorySubsystem* ptr) const;
+};
+
+// Structure to hold kernel launch parameters
+struct KernelLaunchParams {
+    std::string kernelName;
+    unsigned int gridDimX, gridDimY, gridDimZ;
+    unsigned int blockDimX, blockDimY, blockDimZ;
+    unsigned int sharedMemBytes;
+    std::vector<CUdeviceptr> parameters;
+};
+
+// Structure to hold kernel parameter information
+struct KernelParameter {
+    CUdeviceptr devicePtr;     // Device pointer to parameter data
+    size_t size;               // Size of parameter data
+    size_t offset;             // Offset in parameter memory space
 };
 
 class PTXVM {
@@ -45,6 +64,22 @@ public:
     void printWarpVisualization() const;
     void printMemoryVisualization() const;
     void printPerformanceCounters() const;
+
+    // Kernel execution methods
+    void setKernelName(const std::string& name);
+    void setKernelLaunchParams(const KernelLaunchParams& params);
+    bool launchKernel();
+    
+    // Parameter handling methods
+    void setKernelParameters(const std::vector<KernelParameter>& parameters);
+    bool setupKernelParameters();
+
+    // Memory management methods
+    CUdeviceptr allocateMemory(size_t size);
+    bool freeMemory(CUdeviceptr ptr);
+    bool copyMemoryHtoD(CUdeviceptr dst, const void* src, size_t size);
+    bool copyMemoryDtoH(void* dst, CUdeviceptr src, size_t size);
+    const std::map<CUdeviceptr, size_t>& getMemoryAllocations() const;
 
     // Get reference to the register bank
     RegisterBank& getRegisterBank() {
@@ -112,6 +147,19 @@ private:
     std::unique_ptr<PerformanceCounters> m_performanceCounters;  // Performance counters
     std::unique_ptr<Debugger> m_debugger;  // Debugger
     std::unique_ptr<RegisterAllocator> m_registerAllocator;  // Register allocator
+    
+    // Kernel execution state
+    std::string m_currentKernelName;
+    KernelLaunchParams m_kernelLaunchParams;
+    std::vector<KernelParameter> m_kernelParameters;
+    
+    // Memory management
+    std::map<CUdeviceptr, size_t> m_memoryAllocations;
+    CUdeviceptr m_nextMemoryAddress;
+    
+    // Parameter memory space (special area for kernel parameters)
+    static const CUdeviceptr PARAMETER_MEMORY_BASE = 0x1000;
+    size_t m_parameterMemoryOffset;
     
     // Profiling support
     std::ofstream m_profileOutputStream;

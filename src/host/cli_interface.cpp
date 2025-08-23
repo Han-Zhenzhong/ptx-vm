@@ -106,6 +106,12 @@ public:
             registerCommand(args);
         } else if (cmd == "memory" || cmd == "mem" || cmd == "m") {
             memoryCommand(args);
+        } else if (cmd == "alloc") {
+            allocCommand(args);
+        } else if (cmd == "memcpy") {
+            memcpyCommand(args);
+        } else if (cmd == "launch") {
+            launchCommand(args);
         } else if (cmd == "profile") {
             profileCommand(args);
         } else if (cmd == "dump") {
@@ -114,7 +120,7 @@ public:
             listCommand(args);
         } else if (cmd == "quit" || cmd == "exit" || cmd == "q") {
             quitCommand(args);
-            return true;
+            return true; // Exit the CLI
         } else if (cmd == "clear" || cmd == "cls") {
             clearCommand(args);
         } else if (cmd == "version") {
@@ -127,13 +133,15 @@ public:
             threadsCommand(args);
         } else if (cmd == "warps") {
             warpsCommand(args);
+        } else if (cmd == "visualize" || cmd == "vis") {
+            visualizeCommand(args);
         } else {
             std::ostringstream oss;
             oss << "Unknown command: " << command << ". Type 'help' for available commands.";
             printError(oss.str());
         }
         
-        return false;
+        return false; // Don't exit the CLI
     }
 
     // Help command - display available commands
@@ -148,6 +156,9 @@ public:
             printMessage("  watch (w) <address>    - Set a watchpoint");
             printMessage("  register (reg, r)      - Display register information");
             printMessage("  memory (mem, m)        - Display memory information");
+            printMessage("  alloc <size>           - Allocate memory");
+            printMessage("  memcpy <dest> <src> <size> - Copy memory");
+            printMessage("  launch <kernel> [params] - Launch a kernel with parameters");
             printMessage("  profile <filename>     - Start profiling");
             printMessage("  dump                    - Dump execution statistics");
             printMessage("  list (l)               - List loaded program disassembly");
@@ -182,46 +193,64 @@ public:
                 printMessage("break <address> - Set a breakpoint at the specified address");
                 printMessage("Example: break 0x100");
             } else if (cmd == "watch" || cmd == "w") {
-                printMessage("watch <address> - Set a watchpoint at the specified memory address");
+                printMessage("watch <address> - Set a watchpoint at the specified address");
                 printMessage("Example: watch 0x1000");
             } else if (cmd == "register" || cmd == "reg" || cmd == "r") {
-                printMessage("register [options] - Display register information");
-                printMessage("Options:");
-                printMessage("  all       - Show all registers");
-                printMessage("  predicate - Show predicate registers");
-                printMessage("  pc        - Show program counters");
+                printMessage("register [all|predicate|pc] - Display register information");
+                printMessage("Examples:");
+                printMessage("  register          - Display general purpose registers");
+                printMessage("  register all      - Display all registers");
+                printMessage("  register predicate - Display predicate registers");
+                printMessage("  register pc       - Display program counter");
             } else if (cmd == "memory" || cmd == "mem" || cmd == "m") {
                 printMessage("memory <address> [size] - Display memory contents");
-                printMessage("Example: memory 0x1000 32");
+                printMessage("Example: memory 0x1000 256");
+            } else if (cmd == "alloc") {
+                printMessage("alloc <size> - Allocate memory in the VM");
+                printMessage("Example: alloc 1024");
+            } else if (cmd == "memcpy") {
+                printMessage("memcpy <dest> <src> <size> - Copy memory in the VM");
+                printMessage("Example: memcpy 0x2000 0x1000 256");
+            } else if (cmd == "launch") {
+                printMessage("launch <kernel> [params] - Launch a kernel with parameters");
+                printMessage("Example: launch myKernel 0x1000 0x2000");
+                printMessage("This command launches a kernel with the specified parameters.");
+                printMessage("Each parameter should be a memory address where the parameter data is stored.");
             } else if (cmd == "profile") {
                 printMessage("profile <filename> - Start profiling session");
-                printMessage("Example: profile output.csv");
+                printMessage("Example: profile performance.csv");
             } else if (cmd == "dump") {
-                printMessage("dump - Output execution statistics");
+                printMessage("dump - Dump execution statistics and analysis");
             } else if (cmd == "list" || cmd == "l") {
                 printMessage("list - List loaded program disassembly");
             } else if (cmd == "visualize" || cmd == "vis") {
-                printMessage("visualize <type> - Display visualization of the specified type");
-                printMessage("Available types:");
-                printMessage("  warp       - Visualize warp execution");
-                printMessage("  memory     - Visualize memory usage");
-                printMessage("  performance- Display performance counters");
+                printMessage("visualize <type> - Display visualizations");
+                printMessage("Types:");
+                printMessage("  warp        - Warp execution visualization");
+                printMessage("  memory      - Memory access visualization");
+                printMessage("  performance - Performance counter display");
+                printMessage("Examples:");
+                printMessage("  visualize warp");
+                printMessage("  visualize memory");
+                printMessage("  visualize performance");
             } else if (cmd == "quit" || cmd == "exit" || cmd == "q") {
                 printMessage("quit - Exit the virtual machine");
             } else if (cmd == "clear" || cmd == "cls") {
-                printMessage("clear - Clear the console screen");
+                printMessage("clear - Clear the screen");
             } else if (cmd == "version") {
-                printMessage("version - Show PTX VM version information");
+                printMessage("version - Show version information");
             } else if (cmd == "info") {
-                printMessage("info - Show current VM state and configuration");
+                printMessage("info - Show current VM information");
             } else if (cmd == "disassemble" || cmd == "disas") {
                 printMessage("disassemble - Disassemble loaded program");
             } else if (cmd == "threads") {
-                printMessage("threads - Display thread execution state");
+                printMessage("threads - Display thread status");
             } else if (cmd == "warps") {
-                printMessage("warps - Display warp execution state");
+                printMessage("warps - Display warp status");
             } else {
-                printError("No help available for this command");
+                std::ostringstream oss;
+                oss << "No detailed help available for command: " << cmd;
+                printMessage(oss.str());
             }
         }
     }
@@ -462,6 +491,165 @@ public:
             printMessage("This is a placeholder. Real implementation would show memory contents.");
         } catch (...) {
             printError("Invalid address format. Use hexadecimal (e.g., 0x1000).");
+        }
+    }
+
+    // Alloc command - allocate memory
+    void allocCommand(const std::vector<std::string>& args) {
+        if (args.empty()) {
+            printError("Usage: alloc <size>");
+            return;
+        }
+        
+        try {
+            // Parse size
+            size_t size = std::stoull(args[0], nullptr, 0);
+            
+            if (size == 0) {
+                printError("Size must be greater than 0.");
+                return;
+            }
+            
+            if (size > 1024 * 1024) { // 1MB limit
+                printError("Size must be less than 1MB.");
+                return;
+            }
+            
+            // Call the VM's memory allocation function
+            HostAPI hostAPI;
+            CUdeviceptr ptr;
+            CUresult result = hostAPI.cuMemAlloc(&ptr, size);
+            
+            if (result == CUDA_SUCCESS) {
+                std::ostringstream oss;
+                oss << "Allocated " << size << " bytes at address 0x" << std::hex << ptr << std::dec;
+                printMessage(oss.str());
+            } else {
+                std::ostringstream oss;
+                oss << "Failed to allocate memory. Error code: " << result;
+                printError(oss.str());
+            }
+        } catch (...) {
+            printError("Invalid size format.");
+        }
+    }
+
+    // Memcpy command - copy memory
+    void memcpyCommand(const std::vector<std::string>& args) {
+        if (args.size() < 3) {
+            printError("Usage: memcpy <dest> <src> <size>");
+            printError("Example: memcpy 0x2000 0x1000 256");
+            return;
+        }
+        
+        try {
+            // Parse destination address
+            uint64_t dest = std::stoull(args[0], nullptr, 0);
+            
+            // Parse source address
+            uint64_t src = std::stoull(args[1], nullptr, 0);
+            
+            // Parse size
+            size_t size = std::stoull(args[2], nullptr, 0);
+            
+            if (size == 0) {
+                printError("Size must be greater than 0.");
+                return;
+            }
+            
+            if (size > 1024 * 1024) { // 1MB limit
+                printError("Size must be less than 1MB.");
+                return;
+            }
+            
+            // Call the VM's memory copy function
+            HostAPI hostAPI;
+            // For now, we'll simulate a simple memory copy by creating a temporary buffer
+            // In a more complete implementation, we would copy between actual VM memory locations
+            std::vector<uint8_t> tempBuffer(size);
+            
+            // Simulate reading from source (in a real implementation, this would read from VM memory)
+            CUresult readResult = hostAPI.cuMemcpyDtoH(tempBuffer.data(), src, size);
+            
+            if (readResult != CUDA_SUCCESS) {
+                std::ostringstream oss;
+                oss << "Failed to read from source address 0x" << std::hex << src << std::dec;
+                printError(oss.str());
+                return;
+            }
+            
+            // Simulate writing to destination (in a real implementation, this would write to VM memory)
+            CUresult writeResult = hostAPI.cuMemcpyHtoD(dest, tempBuffer.data(), size);
+            
+            if (writeResult != CUDA_SUCCESS) {
+                std::ostringstream oss;
+                oss << "Failed to write to destination address 0x" << std::hex << dest << std::dec;
+                printError(oss.str());
+                return;
+            }
+            
+            std::ostringstream oss;
+            oss << "Copied " << size << " bytes from 0x" << std::hex << src 
+                << " to 0x" << dest << std::dec;
+            printMessage(oss.str());
+        } catch (...) {
+            printError("Invalid address or size format.");
+        }
+    }
+
+    // Launch command - launch a kernel with parameters
+    void launchCommand(const std::vector<std::string>& args) {
+        if (args.empty()) {
+            printError("Usage: launch <kernel_name> [param1] [param2] ...");
+            printError("Example: launch myKernel 0x1000 0x2000");
+            return;
+        }
+        
+        // First argument is the kernel name
+        std::string kernelName = args[0];
+        
+        // Remaining arguments are parameter addresses
+        std::vector<CUdeviceptr> parameters;
+        for (size_t i = 1; i < args.size(); ++i) {
+            try {
+                CUdeviceptr param = std::stoull(args[i], nullptr, 0);
+                parameters.push_back(param);
+            } catch (...) {
+                std::ostringstream oss;
+                oss << "Invalid parameter format: " << args[i];
+                printError(oss.str());
+                return;
+            }
+        }
+        
+        // Launch the kernel with default grid/block dimensions
+        // In a more complete implementation, these would be specified by the user
+        printMessage("Launching kernel: " + kernelName);
+        
+        // Prepare kernel parameters
+        std::vector<void*> kernelParams;
+        for (const auto& param : parameters) {
+            kernelParams.push_back(reinterpret_cast<void*>(param));
+        }
+        kernelParams.push_back(nullptr); // Null-terminate the array
+        
+        HostAPI hostAPI;
+        CUresult result = hostAPI.cuLaunchKernel(
+            1, // function handle (simplified)
+            1, 1, 1, // grid dimensions
+            32, 1, 1, // block dimensions
+            0, // shared memory
+            nullptr, // stream
+            kernelParams.data(), // kernel parameters
+            nullptr // extra
+        );
+        
+        if (result == CUDA_SUCCESS) {
+            printMessage("Kernel launched successfully");
+        } else {
+            std::ostringstream oss;
+            oss << "Failed to launch kernel. Error code: " << result;
+            printError(oss.str());
         }
     }
 

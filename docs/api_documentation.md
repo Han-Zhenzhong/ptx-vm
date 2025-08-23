@@ -49,17 +49,24 @@ public:
     // Get performance counters
     virtual bool getPerformanceCounters(PerformanceCounters& counters) const = 0;
     
-    // Visualization methods
-    virtual void visualizeWarps() = 0;
-    virtual void visualizeMemory() = 0;
-    virtual void visualizePerformance() = 0;
+    // CUDA-like API functions for parameter passing
+    virtual CUresult cuMemAlloc(CUdeviceptr* dptr, size_t bytesize) = 0;
+    virtual CUresult cuMemFree(CUdeviceptr dptr) = 0;
+    virtual CUresult cuMemcpyHtoD(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount) = 0;
+    virtual CUresult cuMemcpyDtoH(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount) = 0;
+    virtual CUresult cuLaunchKernel(CUfunction f,
+                                   unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ,
+                                   unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ,
+                                   unsigned int sharedMemBytes, CUstream hStream, 
+                                   void** kernelParams, void** extra) = 0;
     
     // Reset the VM
     virtual bool reset() = 0;
     
-    // Clean up resources
+    // Shutdown the VM
     virtual void shutdown() = 0;
 };
+
 ```
 
 ### Visualization API
@@ -723,3 +730,170 @@ Planned enhancements include:
 - Enhanced logging for API calls
 - Support for remote debugging
 - Better support for different execution modes
+
+### CUDA-like API Functions
+
+#### Memory Management Functions
+
+##### cuMemAlloc
+Allocates memory on the device:
+```cpp
+CUresult cuMemAlloc(CUdeviceptr* dptr, size_t bytesize)
+```
+Parameters:
+- `dptr`: Returned device pointer
+- `bytesize`: Requested allocation size in bytes
+
+Returns:
+- `CUDA_SUCCESS` on success
+- `CUDA_ERROR_INVALID_VALUE` if `dptr` is null
+- `CUDA_ERROR_OUT_OF_MEMORY` if not enough memory
+
+Example:
+```cpp
+CUdeviceptr ptr;
+CUresult result = cuMemAlloc(&ptr, 1024 * sizeof(float));
+if (result == CUDA_SUCCESS) {
+    // Use ptr for kernel parameters
+}
+```
+
+##### cuMemFree
+Frees memory on the device:
+```cpp
+CUresult cuMemFree(CUdeviceptr dptr)
+```
+Parameters:
+- `dptr`: Pointer to memory to free
+
+Returns:
+- `CUDA_SUCCESS` on success
+
+Example:
+```cpp
+cuMemFree(ptr);
+```
+
+##### cuMemcpyHtoD
+Copies memory from host to device:
+```cpp
+CUresult cuMemcpyHtoD(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount)
+```
+Parameters:
+- `dstDevice`: Destination device pointer
+- `srcHost`: Source host pointer
+- `ByteCount`: Size of memory copy in bytes
+
+Returns:
+- `CUDA_SUCCESS` on success
+- `CUDA_ERROR_INVALID_VALUE` if parameters are invalid
+
+Example:
+```cpp
+std::vector<int> hostData(1024);
+// ... populate hostData ...
+CUresult result = cuMemcpyHtoD(devicePtr, hostData.data(), 1024 * sizeof(int));
+```
+
+##### cuMemcpyDtoH
+Copies memory from device to host:
+```cpp
+CUresult cuMemcpyDtoH(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount)
+```
+Parameters:
+- `dstHost`: Destination host pointer
+- `srcDevice`: Source device pointer
+- `ByteCount`: Size of memory copy in bytes
+
+Returns:
+- `CUDA_SUCCESS` on success
+- `CUDA_ERROR_INVALID_VALUE` if parameters are invalid
+
+Example:
+```cpp
+std::vector<int> hostData(1024);
+CUresult result = cuMemcpyDtoH(hostData.data(), devicePtr, 1024 * sizeof(int));
+```
+
+#### Kernel Launch Functions
+
+##### cuLaunchKernel
+Launches a CUDA kernel:
+```cpp
+CUresult cuLaunchKernel(CUfunction f,
+                       unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ,
+                       unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ,
+                       unsigned int sharedMemBytes, CUstream hStream, 
+                       void** kernelParams, void** extra)
+```
+Parameters:
+- `f`: Kernel to launch
+- `gridDimX, gridDimY, gridDimZ`: Grid dimensions
+- `blockDimX, blockDimY, blockDimZ`: Block dimensions
+- `sharedMemBytes`: Shared memory size
+- `hStream`: Stream identifier
+- `kernelParams`: Array of kernel parameters
+- `extra`: Extra options
+
+Returns:
+- `CUDA_SUCCESS` on success
+- `CUDA_ERROR_INVALID_VALUE` if parameters are invalid
+
+Example:
+```cpp
+std::vector<void*> params = {reinterpret_cast<void*>(ptr1), 
+                             reinterpret_cast<void*>(ptr2), 
+                             nullptr};
+CUresult result = cuLaunchKernel(kernelFunc, 
+                                1, 1, 1,     // Grid
+                                32, 1, 1,    // Block
+                                0,           // Shared mem
+                                nullptr,     // Stream
+                                params.data(), 
+                                nullptr);
+```
+
+### Parameter Passing Workflow
+
+The parameter passing mechanism works as follows:
+
+1. **Memory Allocation**: Use `cuMemAlloc` to allocate device memory for parameters
+2. **Data Transfer**: Use `cuMemcpyHtoD` to copy parameter data from host to device
+3. **Kernel Launch**: Use `cuLaunchKernel` to launch the kernel with parameter pointers
+4. **Result Retrieval**: Use `cuMemcpyDtoH` to copy results from device to host
+5. **Memory Cleanup**: Use `cuMemFree` to free device memory
+
+Example complete workflow:
+```cpp
+// 1. Allocate memory for input and output
+CUdeviceptr inputPtr, outputPtr;
+cuMemAlloc(&inputPtr, 1024 * sizeof(float));
+cuMemAlloc(&outputPtr, 1024 * sizeof(float));
+
+// 2. Copy input data to device
+std::vector<float> inputData(1024, 1.0f);
+cuMemcpyHtoD(inputPtr, inputData.data(), 1024 * sizeof(float));
+
+// 3. Launch kernel with parameters
+std::vector<void*> kernelParams = {
+    reinterpret_cast<void*>(inputPtr),
+    reinterpret_cast<void*>(outputPtr),
+    nullptr  // Null terminator
+};
+
+cuLaunchKernel(kernelFunc,
+               1, 1, 1,     // Grid dimensions
+               32, 1, 1,    // Block dimensions
+               0, nullptr,  // Shared memory and stream
+               kernelParams.data(),
+               nullptr);
+
+// 4. Copy results back to host
+std::vector<float> outputData(1024);
+cuMemcpyDtoH(outputData.data(), outputPtr, 1024 * sizeof(float));
+
+// 5. Free device memory
+cuMemFree(inputPtr);
+cuMemFree(outputPtr);
+```
+
