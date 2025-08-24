@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <cctype>
+#include "host_api.hpp"
 
 // Private implementation class
 class CLIInterface::Impl {

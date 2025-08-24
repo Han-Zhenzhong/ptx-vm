@@ -46,6 +46,10 @@ enum class InstructionTypes {
     MOV,
     CMOV,
     
+    // Parameter operations
+    LD_PARAM,  // Load from parameter memory
+    ST_PARAM,  // Store to parameter memory
+    
     // Special operations
     NOP,
     BARRIER,

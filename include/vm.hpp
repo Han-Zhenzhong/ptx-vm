@@ -11,7 +11,10 @@
 #include "performance_counters.hpp"
 #include "debugger.hpp"
 #include "optimizer/register_allocator.hpp"
-#include "host_api.hpp"  // Host API definitions
+
+// Forward declarations to avoid circular includes
+typedef uint64_t CUdeviceptr;
+struct KernelLaunchParams;
 
 // Explicitly define the deleter for MemorySubsystem since we're using Pimpl
 // This prevents the compiler from trying to generate a default deleter which requires complete type
@@ -73,6 +76,7 @@ public:
     // Parameter handling methods
     void setKernelParameters(const std::vector<KernelParameter>& parameters);
     bool setupKernelParameters();
+    void mapKernelParametersToRegisters();
 
     // Memory management methods
     CUdeviceptr allocateMemory(size_t size);

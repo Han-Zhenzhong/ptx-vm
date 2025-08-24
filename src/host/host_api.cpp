@@ -3,12 +3,18 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <cstring>
 #include "vm.hpp"
 #include "cuda_binary_loader.hpp"
 #include "debugger.hpp"
 #include "execution/executor.hpp"  // Include for PTXExecutor complete type
 #include "registers/register_bank.hpp"  // Include for RegisterBank complete type
 #include "instruction_types.hpp"  // Include for InstructionTypes enum
+
+// Global variables for SimpleHostAPI
+static std::unique_ptr<PTXVM> g_simpleVM = nullptr;
+static bool g_vmInitialized = false;
+static std::map<CUdeviceptr, size_t> g_allocations;
 
 // Private implementation class
 class HostAPI::Impl {
@@ -610,11 +616,6 @@ void HostAPI::visualizePerformance() {
     pImpl->printPerformanceCounters();
 }
 
-// Static variables for SimpleHostAPI
-static std::unique_ptr<PTXVM> g_simpleVM;
-static bool g_vmInitialized = false;
-static std::map<CUdeviceptr, size_t> g_allocations; // Track memory allocations
-
 // Simplified API for testing
 namespace SimpleHostAPI {
     // Initialize the virtual machine
@@ -626,15 +627,6 @@ namespace SimpleHostAPI {
         g_simpleVM = std::make_unique<PTXVM>();
         g_vmInitialized = g_simpleVM->initialize();
         return g_vmInitialized;
-    }
-    
-    // Load a PTX program
-    bool loadProgram(const std::string& filename) {
-        if (!g_vmInitialized) {
-            return false;
-        }
-        
-        return g_simpleVM->loadProgram(filename);
     }
     
     // Allocate memory on the VM
@@ -773,5 +765,16 @@ namespace SimpleHostAPI {
     // Get list of current memory allocations
     const std::map<CUdeviceptr, size_t>& getMemoryAllocations() {
         return g_allocations;
+    }
+    
+    // Load a PTX program
+    bool loadProgram(const std::string& filename) {
+        if (!g_vmInitialized) {
+            if (!initializeVM()) {
+                return false;
+            }
+        }
+        
+        return g_simpleVM->loadProgram(filename);
     }
 }

@@ -121,6 +121,8 @@ void Decoder::Impl::initializeOpcodeMap() {
     m_opcodeMap["nop"] = InstructionTypes::NOP;
     m_opcodeMap["barrier"] = InstructionTypes::BARRIER;
     m_opcodeMap["sync"] = InstructionTypes::SYNC;
+    m_opcodeMap["ld.param"] = InstructionTypes::LD_PARAM;
+    m_opcodeMap["st.param"] = InstructionTypes::ST_PARAM;
     // ... add more opcode mappings as needed ...
 }
 

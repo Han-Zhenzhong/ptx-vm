@@ -6,6 +6,7 @@
 #include "warp_scheduler.hpp"  // Warp scheduler header
 #include "predicate_handler.hpp"  // Predicate handler header
 #include "reconvergence_mechanism.hpp"  // Reconvergence mechanism header
+#include "memory/memory.hpp"  // Memory subsystem and MemorySpace
 
 // Private implementation class
 class PTXExecutor::Impl {
@@ -274,6 +275,12 @@ private:
             
             case InstructionTypes::NOP:
                 return executeNOP(instr);
+            
+            case InstructionTypes::LD_PARAM:
+                return executeLDParam(instr);
+            
+            case InstructionTypes::ST_PARAM:
+                return executeSTParam(instr);
             
             default:
                 std::cerr << "Unsupported instruction type: " << static_cast<int>(instr.type) << std::endl;
@@ -551,12 +558,7 @@ private:
             case OperandType::MEMORY:
                 {
                 // Determine memory space
-                MemorySpace space = MemorySpace::GLOBAL;  // Simplified for now
-                if (operand.address < 0x1000) {
-                    space = MemorySpace::SHARED;
-                } else if (operand.address < 0x2000) {
-                    space = MemorySpace::LOCAL;
-                }
+                MemorySpace space = determineMemorySpace(operand.address);
                 
                 // Increment appropriate memory read counter
                 switch (space) {
@@ -568,6 +570,12 @@ private:
                         break;
                     case MemorySpace::LOCAL:
                         m_performanceCounters.increment(PerformanceCounterIDs::LOCAL_MEMORY_READS);
+                        break;
+                    case MemorySpace::PARAMETER:
+                        m_performanceCounters.increment(PerformanceCounterIDs::PARAMETER_MEMORY_READS);
+                        break;
+                    case MemorySpace::CONSTANT:
+                        m_performanceCounters.increment(PerformanceCounterIDs::CONSTANT_MEMORY_READS);
                         break;
                     default:
                         // Handle other memory spaces

@@ -35,10 +35,10 @@ public:
 PTXVM::PTXVM() : pImpl(std::make_unique<Impl>()),
                  m_registerBank(std::make_unique<RegisterBank>()),
                  m_memorySubsystem(nullptr, MemorySubsystemDeleter()), // Will be initialized in initialize()
-                 m_executor(std::make_unique<PTXExecutor>(*m_registerBank)),
+                 m_executor(nullptr), // Will be initialized in initialize()
                  m_performanceCounters(std::make_unique<PerformanceCounters>()),
-                 m_debugger(std::make_unique<Debugger>(*m_executor)),
-                 m_registerAllocator(std::make_unique<RegisterAllocator>()),
+                 m_debugger(nullptr), // Will be initialized in initialize()
+                 m_registerAllocator(nullptr), // Will be initialized in initialize()
                  m_currentKernelName(""),
                  m_nextMemoryAddress(0x10000), // Start allocating at 64KB
                  m_parameterMemoryOffset(0) {
@@ -86,17 +86,36 @@ bool PTXVM::setupKernelParameters() {
         }
     }
     
+    // Map parameters to registers for direct access
+    mapKernelParametersToRegisters();
+    
     std::cout << "Set up " << m_kernelParameters.size() << " kernel parameters in memory" << std::endl;
     return true;
 }
 
-bool PTXVM::launchKernel() {
-    // For now, just run the loaded program
-    // In a full implementation, this would:
-    // 1. Set up the execution context with the kernel launch parameters
-    // 2. Pass kernel parameters to the appropriate memory locations
-    // 3. Execute the specific kernel function
+void PTXVM::mapKernelParametersToRegisters() {
+    // Map kernel parameters to registers so they can be accessed directly
+    // This is a simplified implementation that maps each parameter to a register
+    // In a more sophisticated implementation, this would depend on the PTX function signature
     
+    RegisterBank& registerBank = pImpl->m_executor->getRegisterBank();
+    
+    for (size_t i = 0; i < m_kernelParameters.size() && i < 32; ++i) {
+        const auto& param = m_kernelParameters[i];
+        
+        // For pointer parameters, store the pointer value in a register
+        // For value parameters, we would need to read the value from parameter memory
+        // In this simplified implementation, we'll store the parameter memory offset
+        
+        uint64_t paramValue = PARAMETER_MEMORY_BASE + param.offset;
+        registerBank.writeRegister(static_cast<uint32_t>(i), paramValue);
+    }
+    
+    std::cout << "Mapped " << m_kernelParameters.size() << " kernel parameters to registers" << std::endl;
+}
+
+bool PTXVM::launchKernel() {
+    // Set up execution context with kernel launch parameters
     std::cout << "Launching kernel: " << m_currentKernelName << std::endl;
     std::cout << "Grid dimensions: " << m_kernelLaunchParams.gridDimX << " x " 
               << m_kernelLaunchParams.gridDimY << " x " << m_kernelLaunchParams.gridDimZ << std::endl;
@@ -105,17 +124,53 @@ bool PTXVM::launchKernel() {
     std::cout << "Shared memory: " << m_kernelLaunchParams.sharedMemBytes << " bytes" << std::endl;
     std::cout << "Parameters: " << m_kernelLaunchParams.parameters.size() << " parameters" << std::endl;
     
-    // If we have parameters, make sure they are set up
+    // Set up kernel parameters in VM memory
     if (!m_kernelParameters.empty()) {
-        setupKernelParameters();
+        if (!setupKernelParameters()) {
+            std::cerr << "Failed to set up kernel parameters" << std::endl;
+            return false;
+        }
     }
     
-    // Execute the program
-    return pImpl->m_executor->execute();
+    // Set launch parameters in executor
+    if (pImpl->m_executor) {
+        pImpl->m_executor->setGridDimensions(
+            m_kernelLaunchParams.gridDimX,
+            m_kernelLaunchParams.gridDimY,
+            m_kernelLaunchParams.gridDimZ
+        );
+        
+        pImpl->m_executor->setBlockDimensions(
+            m_kernelLaunchParams.blockDimX,
+            m_kernelLaunchParams.blockDimY,
+            m_kernelLaunchParams.blockDimZ
+        );
+        
+        pImpl->m_executor->setSharedMemorySize(m_kernelLaunchParams.sharedMemBytes);
+    }
+    
+    // Execute the kernel
+    bool result = pImpl->m_executor->execute();
+    
+    if (result) {
+        std::cout << "Kernel execution completed successfully" << std::endl;
+    } else {
+        std::cerr << "Kernel execution failed" << std::endl;
+    }
+    
+    return result;
 }
 
 bool PTXVM::initialize() {
-    // Already initialized in constructor
+    // Initialize the executor with register bank and memory subsystem
+    m_executor = std::make_unique<PTXExecutor>(*m_registerBank, *m_memorySubsystem);
+    
+    // Initialize the debugger with the executor
+    m_debugger = std::make_unique<Debugger>(m_executor.get());
+    
+    // Initialize the register allocator with this VM
+    m_registerAllocator = std::make_unique<RegisterAllocator>(this);
+    
     return true;
 }
 
@@ -256,4 +311,24 @@ bool PTXVM::copyMemoryDtoH(void* dst, CUdeviceptr src, size_t size) {
 
 const std::map<CUdeviceptr, size_t>& PTXVM::getMemoryAllocations() const {
     return m_memoryAllocations;
+}
+
+bool PTXVM::loadProgram(const std::string& filename) {
+    // Store the filename for later use
+    pImpl->m_programFilename = filename;
+    pImpl->m_isProgramLoaded = true;
+    
+    // In a real implementation, this would:
+    // 1. Load the PTX file
+    // 2. Parse the PTX code
+    // 3. Convert PTX instructions to internal representation
+    // 4. Initialize the executor with the instructions
+    // For now, we'll just mark the program as loaded
+    
+    std::cout << "Loading program: " << filename << std::endl;
+    return true;
+}
+
+bool PTXVM::isProgramLoaded() const {
+    return pImpl->m_isProgramLoaded;
 }

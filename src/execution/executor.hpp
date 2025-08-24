@@ -201,6 +201,10 @@ private:
     size_t findCFGReconvergencePoint(size_t pc);
     bool buildControlFlowGraphFromPTX(const std::vector<DecodedInstruction>& instructions);
     
+    // Parameter instruction execution methods
+    bool executeLDParam(const DecodedInstruction& instr);
+    bool executeSTParam(const DecodedInstruction& instr);
+    
 };
 
 #endif // PTX_EXECUTOR_HPP
