@@ -138,6 +138,42 @@ Display memory contents.
 > memory <address> [size]
 ```
 
+### alloc
+Allocate memory in the VM.
+```bash
+> alloc <size>
+```
+
+### memcpy
+Copy memory within the VM.
+```bash
+> memcpy <dest> <src> <size>
+```
+
+### write
+Write a single byte value to a specific memory address.
+```bash
+> write <address> <value>
+```
+
+### fill
+Fill memory with multiple byte values starting at a specific address.
+```bash
+> fill <address> <count> <value1> [value2] ...
+```
+
+### loadfile
+Load data from a file into VM memory at a specific address.
+```bash
+> loadfile <address> <file> <size>
+```
+
+### launch
+Launch a kernel with parameters.
+```bash
+> launch <kernel_name> [param1] [param2] ...
+```
+
 ### profile
 Start profiling session.
 ```bash

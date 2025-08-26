@@ -272,6 +272,9 @@ Parameters are stored in a dedicated parameter memory space starting at address 
 #### CLI Commands
 - `alloc <size>`: Allocate memory in VM
 - `memcpy <dest> <src> <size>`: Copy memory within VM
+- `write <address> <value>`: Write a single byte value to memory
+- `fill <address> <count> <value1> [value2] ...`: Fill memory with multiple values
+- `loadfile <address> <file> <size>`: Load data from a file into VM memory
 - `launch <kernel> [params]`: Launch kernel with parameters
 
 ### Usage Examples
@@ -311,9 +314,16 @@ cuLaunchKernel(
 # Allocate memory
 > alloc 4096
 Allocated 4096 bytes at address 0x10000
+> alloc 4096
+Allocated 4096 bytes at address 0x10100
 
-# Copy data (example)
-> memcpy 0x10000 0x20000 1024
+# Initialize memory with specific values
+> fill 0x10000 4 1 2 3 4
+Filled 4 bytes at address 0x10000
+
+# Or load data from a file
+> loadfile 0x10100 input.bin 1024
+Loaded 1024 bytes from input.bin to address 0x10100
 
 # Launch kernel with parameters
 > launch myKernel 0x10000 0x10100

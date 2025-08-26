@@ -80,6 +80,39 @@ Example:
 Copied 256 bytes from 0x10000 to 0x20000
 ```
 
+#### write
+Write a single byte value to memory:
+```bash
+> write <address> <value>
+```
+Example:
+```bash
+> write 0x10000 42
+Wrote value 42 to address 0x10000
+```
+
+#### fill
+Fill memory with multiple values:
+```bash
+> fill <address> <count> <value1> [value2] ...
+```
+Example:
+```bash
+> fill 0x10000 4 1 2 3 4
+Filled 4 bytes at address 0x10000
+```
+
+#### loadfile
+Load data from a file into VM memory:
+```bash
+> loadfile <address> <file> <size>
+```
+Example:
+```bash
+> loadfile 0x10000 data.bin 1024
+Loaded 1024 bytes from data.bin to address 0x10000
+```
+
 ### Kernel Launching with Parameters
 
 #### launch
@@ -87,6 +120,7 @@ Launch a kernel with parameters:
 ```bash
 > launch <kernel_name> [param1] [param2] ...
 ```
+Each parameter should be a memory address where the parameter data is stored.
 Example:
 ```bash
 > launch vectorAdd 0x10000 0x20000
@@ -105,12 +139,17 @@ Kernel launched successfully
    ```bash
    > alloc 4096
    Allocated 4096 bytes at address 0x10000
+   > alloc 4096
+   Allocated 4096 bytes at address 0x10100
    ```
 
-3. **Prepare parameter data** (this would typically involve copying data from host):
+3. **Prepare parameter data**:
    ```bash
-   # In a real scenario, you would copy actual data
-   # For demonstration, we'll assume data is prepared at 0x10000
+   # Write specific values
+   > fill 0x10000 4 1 2 3 4
+   
+   # Or load data from a file
+   > loadfile 0x10100 input.bin 1024
    ```
 
 4. **Launch the kernel with parameters**:
@@ -355,6 +394,67 @@ Display register information.
 Display memory contents.
 ```bash
 > memory <address> [size]
+```
+
+### alloc
+Allocate memory in the VM.
+```bash
+> alloc <size>
+```
+
+### memcpy
+Copy memory within the VM.
+```bash
+> memcpy <dest> <src> <size>
+```
+
+### write
+Write a single byte value to a specific memory address.
+```bash
+> write <address> <value>
+```
+Value must be between 0-255 (one byte). This command is useful for initializing memory with specific values.
+Example:
+```bash
+> write 0x10000 42
+Wrote value 42 to address 0x10000
+```
+
+### fill
+Fill memory with multiple byte values starting at a specific address.
+```bash
+> fill <address> <count> <value1> [value2] ...
+```
+This command writes multiple byte values to consecutive memory locations. Count specifies how many values to write, and each value must be between 0-255.
+Example:
+```bash
+> fill 0x10000 4 1 2 3 4
+Filled 4 bytes at address 0x10000
+```
+
+### loadfile
+Load data from a file into VM memory at a specific address.
+```bash
+> loadfile <address> <file> <size>
+```
+This command reads data from a file and writes it to VM memory. It's useful for loading larger datasets or binary files into the VM.
+Example:
+```bash
+> loadfile 0x10000 data.bin 1024
+Loaded 1024 bytes from data.bin to address 0x10000
+```
+
+### launch
+Launch a kernel with parameters.
+```bash
+> launch <kernel_name> [param1] [param2] ...
+```
+Each parameter should be a memory address where the parameter data is stored.
+Example:
+```bash
+> launch vectorAdd 0x10000 0x20000
+Launching kernel: vectorAdd
+Kernel launched successfully
 ```
 
 ### profile
@@ -617,6 +717,23 @@ Available performance counters:
 > run
 > memory 0x1000
 > dump
+```
+
+### Parameter Passing Example
+```bash
+> load examples/memory_ops_example.ptx
+> alloc 1024
+Allocated 1024 bytes at address 0x10000
+> alloc 1024
+Allocated 1024 bytes at address 0x10100
+> fill 0x10000 8 1 2 3 4 5 6 7 8
+Filled 8 bytes at address 0x10000
+> loadfile 0x10100 data.bin 256
+Loaded 256 bytes from data.bin to address 0x10100
+> launch myKernel 0x10000 0x10100
+Launching kernel: myKernel
+Kernel launched successfully
+> memory 0x10100 32
 ```
 
 ### Visualization Example

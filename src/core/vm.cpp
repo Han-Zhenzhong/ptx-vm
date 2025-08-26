@@ -122,7 +122,7 @@ bool PTXVM::launchKernel() {
     std::cout << "Block dimensions: " << m_kernelLaunchParams.blockDimX << " x " 
               << m_kernelLaunchParams.blockDimY << " x " << m_kernelLaunchParams.blockDimZ << std::endl;
     std::cout << "Shared memory: " << m_kernelLaunchParams.sharedMemBytes << " bytes" << std::endl;
-    std::cout << "Parameters: " << m_kernelLaunchParams.parameters.size() << " parameters" << std::endl;
+    std::cout << "Parameters: " << m_kernelParameters.size() << " parameters" << std::endl;
     
     // Set up kernel parameters in VM memory
     if (!m_kernelParameters.empty()) {
@@ -130,23 +130,6 @@ bool PTXVM::launchKernel() {
             std::cerr << "Failed to set up kernel parameters" << std::endl;
             return false;
         }
-    }
-    
-    // Set launch parameters in executor
-    if (pImpl->m_executor) {
-        pImpl->m_executor->setGridDimensions(
-            m_kernelLaunchParams.gridDimX,
-            m_kernelLaunchParams.gridDimY,
-            m_kernelLaunchParams.gridDimZ
-        );
-        
-        pImpl->m_executor->setBlockDimensions(
-            m_kernelLaunchParams.blockDimX,
-            m_kernelLaunchParams.blockDimY,
-            m_kernelLaunchParams.blockDimZ
-        );
-        
-        pImpl->m_executor->setSharedMemorySize(m_kernelLaunchParams.sharedMemBytes);
     }
     
     // Execute the kernel

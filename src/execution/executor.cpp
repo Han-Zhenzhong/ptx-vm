@@ -277,10 +277,10 @@ private:
                 return executeNOP(instr);
             
             case InstructionTypes::LD_PARAM:
-                return executeLDParam(instr);
-            
+                return executeLDParam(*this, instr);
+                
             case InstructionTypes::ST_PARAM:
-                return executeSTParam(instr);
+                return executeSTParam(*this, instr);
             
             default:
                 std::cerr << "Unsupported instruction type: " << static_cast<int>(instr.type) << std::endl;
@@ -430,6 +430,9 @@ private:
             case MemorySpace::LOCAL:
                 m_performanceCounters.increment(PerformanceCounterIDs::LOCAL_MEMORY_READS);
                 break;
+            case MemorySpace::PARAMETER:
+                m_performanceCounters.increment(PerformanceCounterIDs::PARAMETER_MEMORY_READS);
+                break;
             default:
                 // Handle other memory spaces
                 break;
@@ -470,6 +473,9 @@ private:
                 break;
             case MemorySpace::LOCAL:
                 m_performanceCounters.increment(PerformanceCounterIDs::LOCAL_MEMORY_WRITES);
+                break;
+            case MemorySpace::PARAMETER:
+                m_performanceCounters.increment(PerformanceCounterIDs::PARAMETER_MEMORY_WRITES);
                 break;
             default:
                 // Handle other memory spaces
@@ -544,6 +550,83 @@ private:
         return true;
     }
     
+    // Execute LD_PARAM (load from parameter memory) instruction
+    static bool executeLDParam(Impl& impl, const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 1) {
+            std::cerr << "Invalid LD_PARAM instruction format" << std::endl;
+            impl.m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // Get the source operand (parameter memory address)
+        uint64_t paramOffset = 0;
+        if (instr.sources[0].type == OperandType::IMMEDIATE) {
+            paramOffset = static_cast<uint64_t>(instr.sources[0].immediateValue);
+        } else if (instr.sources[0].type == OperandType::REGISTER) {
+            paramOffset = impl.m_registerBank->readRegister(instr.sources[0].registerIndex);
+        } else {
+            std::cerr << "Invalid source operand type for LD_PARAM" << std::endl;
+            impl.m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // Calculate the actual parameter memory address
+        uint64_t paramAddress = 0x1000 + paramOffset;  // PARAMETER_MEMORY_BASE = 0x1000
+        
+        // Read from parameter memory
+        uint64_t value = impl.m_memorySubsystem->read<uint64_t>(MemorySpace::GLOBAL, paramAddress);
+        
+        // Store result in destination register
+        impl.storeRegisterValue(instr.dest.registerIndex, value);
+        
+        // Move to next instruction
+        impl.m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute ST_PARAM (store to parameter memory) instruction
+    static bool executeSTParam(Impl& impl, const DecodedInstruction& instr) {
+        if (instr.sources.size() != 2) {
+            std::cerr << "Invalid ST_PARAM instruction format" << std::endl;
+            impl.m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // Get the destination operand (parameter memory address)
+        uint64_t paramOffset = 0;
+        if (instr.sources[0].type == OperandType::IMMEDIATE) {
+            paramOffset = static_cast<uint64_t>(instr.sources[0].immediateValue);
+        } else if (instr.sources[0].type == OperandType::REGISTER) {
+            paramOffset = impl.m_registerBank->readRegister(instr.sources[0].registerIndex);
+        } else {
+            std::cerr << "Invalid destination operand type for ST_PARAM" << std::endl;
+            impl.m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // Get source value
+        uint64_t srcValue = 0;
+        if (instr.sources[1].type == OperandType::IMMEDIATE) {
+            srcValue = static_cast<uint64_t>(instr.sources[1].immediateValue);
+        } else if (instr.sources[1].type == OperandType::REGISTER) {
+            srcValue = impl.m_registerBank->readRegister(instr.sources[1].registerIndex);
+        } else {
+            std::cerr << "Invalid source operand type for ST_PARAM" << std::endl;
+            impl.m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // Calculate the actual parameter memory address
+        uint64_t paramAddress = 0x1000 + paramOffset;  // PARAMETER_MEMORY_BASE = 0x1000
+        
+        // Write to parameter memory
+        impl.m_memorySubsystem->write<uint64_t>(MemorySpace::GLOBAL, paramAddress, srcValue);
+        
+        // Move to next instruction
+        impl.m_currentInstructionIndex++;
+        return true;
+    }
+    
     // Helper function to get source operand value with memory access tracking
     int64_t getSourceValue(const Operand& operand) {
         switch (operand.type) {
@@ -568,21 +651,18 @@ private:
                     case MemorySpace::SHARED:
                         m_performanceCounters.increment(PerformanceCounterIDs::SHARED_MEMORY_READS);
                         break;
-                    case MemorySpace::LOCAL:
-                        m_performanceCounters.increment(PerformanceCounterIDs::LOCAL_MEMORY_READS);
-                        break;
                     case MemorySpace::PARAMETER:
                         m_performanceCounters.increment(PerformanceCounterIDs::PARAMETER_MEMORY_READS);
-                        break;
-                    case MemorySpace::CONSTANT:
-                        m_performanceCounters.increment(PerformanceCounterIDs::CONSTANT_MEMORY_READS);
-                        break;
+                        return static_cast<int64_t>(m_memorySubsystem->read<uint64_t>(space, operand.address));
+                    
+                    case MemorySpace::LOCAL:
+                        m_performanceCounters.increment(PerformanceCounterIDs::LOCAL_MEMORY_READS);
+                        return static_cast<int64_t>(m_memorySubsystem->read<uint64_t>(space, operand.address));
+                    
                     default:
-                        // Handle other memory spaces
-                        break;
+                        std::cerr << "Unknown operand type" << std::endl;
+                        return 0;
                 }
-                
-                return static_cast<int64_t>(m_memorySubsystem->read<uint64_t>(space, operand.address));
                 }
             
             default:
@@ -600,15 +680,19 @@ private:
         m_registerBank->writeRegister(index, value);
     }
 
-    // Helper function to determine memory space from address
+    // Helper function to determine memory space based on address
     MemorySpace determineMemorySpace(uint64_t address) {
-        // Simplified implementation for determining memory space
-        if (address < 0x1000) {
-            return MemorySpace::SHARED;
-        } else if (address < 0x2000) {
-            return MemorySpace::LOCAL;
-        } else {
+        // For now, use a simple heuristic
+        // In a more sophisticated implementation, this would be based on PTX memory space specifiers
+        if (address >= 0x1000 && address < 0x2000) {
+            // Parameter memory range
+            return MemorySpace::PARAMETER;
+        } else if (address < 0x100000) {
             return MemorySpace::GLOBAL;
+        } else if (address < 0x200000) {
+            return MemorySpace::SHARED;
+        } else {
+            return MemorySpace::LOCAL;
         }
     }
 

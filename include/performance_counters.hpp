@@ -31,6 +31,10 @@ namespace PerformanceCounterIDs {
         SHARED_MEMORY_WRITES,       // Shared memory writes
         LOCAL_MEMORY_READS,         // Local memory reads
         LOCAL_MEMORY_WRITES,        // Local memory writes
+        PARAMETER_MEMORY_READS,     // Parameter memory reads
+        PARAMETER_MEMORY_WRITES,    // Parameter memory writes
+        CONSTANT_MEMORY_READS,      // Constant memory reads
+        TEXTURE_MEMORY_READS,       // Texture memory reads
         
         // Control flow statistics
         BRANCHES,                   // Total branches executed

@@ -50,6 +50,15 @@ public:
     // Memcpy command - copy memory
     void memcpyCommand(const std::vector<std::string>& args);
 
+    // Write command - write a value to memory
+    void writeCommand(const std::vector<std::string>& args);
+
+    // Fill command - fill memory with values
+    void fillCommand(const std::vector<std::string>& args);
+
+    // Loadfile command - load file data into memory
+    void loadfileCommand(const std::vector<std::string>& args);
+
     // Launch command - launch a kernel with parameters
     void launchCommand(const std::vector<std::string>& args);
 

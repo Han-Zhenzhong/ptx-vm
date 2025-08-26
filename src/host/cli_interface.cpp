@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <cctype>
+#include <fstream>
 #include "host_api.hpp"
 
 // Private implementation class
@@ -111,6 +112,10 @@ public:
             allocCommand(args);
         } else if (cmd == "memcpy") {
             memcpyCommand(args);
+        } else if (cmd == "write") {
+            writeCommand(args);
+        } else if (cmd == "fill") {
+            fillCommand(args);
         } else if (cmd == "launch") {
             launchCommand(args);
         } else if (cmd == "profile") {
@@ -159,6 +164,9 @@ public:
             printMessage("  memory (mem, m)        - Display memory information");
             printMessage("  alloc <size>           - Allocate memory");
             printMessage("  memcpy <dest> <src> <size> - Copy memory");
+            printMessage("  write <address> <value> - Write a value to memory");
+            printMessage("  fill <address> <count> <value1> [value2] ... - Fill memory with values");
+            printMessage("  loadfile <address> <file> <size> - Load file data into memory");
             printMessage("  launch <kernel> [params] - Launch a kernel with parameters");
             printMessage("  profile <filename>     - Start profiling");
             printMessage("  dump                    - Dump execution statistics");
@@ -212,6 +220,18 @@ public:
             } else if (cmd == "memcpy") {
                 printMessage("memcpy <dest> <src> <size> - Copy memory in the VM");
                 printMessage("Example: memcpy 0x2000 0x1000 256");
+            } else if (cmd == "write") {
+                printMessage("write <address> <value> - Write a value to memory");
+                printMessage("Example: write 0x10000 42");
+                printMessage("This command writes a single byte value to the specified memory address.");
+            } else if (cmd == "fill") {
+                printMessage("fill <address> <count> <value1> [value2] ... - Fill memory with values");
+                printMessage("Example: fill 0x10000 4 1 2 3 4");
+                printMessage("This command writes multiple byte values starting at the specified address.");
+            } else if (cmd == "loadfile") {
+                printMessage("loadfile <address> <file> <size> - Load file data into memory");
+                printMessage("Example: loadfile 0x10000 data.bin 1024");
+                printMessage("This command loads data from a file into VM memory at the specified address.");
             } else if (cmd == "launch") {
                 printMessage("launch <kernel> [params] - Launch a kernel with parameters");
                 printMessage("Example: launch myKernel 0x1000 0x2000");
@@ -598,6 +618,186 @@ public:
         }
     }
 
+    // Write command - write a value to memory
+    void writeCommand(const std::vector<std::string>& args) {
+        if (args.size() < 2) {
+            printError("Usage: write <address> <value>");
+            printError("Example: write 0x10000 42");
+            return;
+        }
+        
+        try {
+            // Parse address
+            uint64_t address = std::stoull(args[0], nullptr, 0);
+            
+            // Parse value
+            uint64_t value = std::stoull(args[1], nullptr, 0);
+            
+            // Validate value is in byte range
+            if (value > 255) {
+                printError("Value must be between 0 and 255 (one byte).");
+                return;
+            }
+            
+            // Write the value to memory
+            HostAPI hostAPI;
+            uint8_t byteValue = static_cast<uint8_t>(value);
+            CUresult result = hostAPI.cuMemcpyHtoD(address, &byteValue, sizeof(byteValue));
+            
+            if (result == CUDA_SUCCESS) {
+                std::ostringstream oss;
+                oss << "Wrote value " << value << " to address 0x" << std::hex << address << std::dec;
+                printMessage(oss.str());
+            } else {
+                std::ostringstream oss;
+                oss << "Failed to write to address 0x" << std::hex << address << std::dec 
+                    << ". Error code: " << result;
+                printError(oss.str());
+            }
+        } catch (...) {
+            printError("Invalid address or value format.");
+        }
+    }
+
+    // Fill command - fill memory with values
+    void fillCommand(const std::vector<std::string>& args) {
+        if (args.size() < 3) {
+            printError("Usage: fill <address> <count> <value1> [value2] ...");
+            printError("Example: fill 0x10000 4 1 2 3 4");
+            return;
+        }
+        
+        try {
+            // Parse address
+            uint64_t address = std::stoull(args[0], nullptr, 0);
+            
+            // Parse count
+            size_t count = std::stoull(args[1], nullptr, 0);
+            
+            // Check if we have enough values
+            if (args.size() < count + 2) {
+                printError("Not enough values provided for the specified count.");
+                return;
+            }
+            
+            // Validate count
+            if (count == 0) {
+                printError("Count must be greater than 0.");
+                return;
+            }
+            
+            if (count > 1024) { // Limit to 1KB
+                printError("Count must be less than 1024.");
+                return;
+            }
+            
+            // Parse values
+            std::vector<uint8_t> values(count);
+            for (size_t i = 0; i < count; ++i) {
+                uint64_t value = std::stoull(args[i + 2], nullptr, 0);
+                if (value > 255) {
+                    std::ostringstream oss;
+                    oss << "Value " << value << " at position " << i << " is out of range (0-255).";
+                    printError(oss.str());
+                    return;
+                }
+                values[i] = static_cast<uint8_t>(value);
+            }
+            
+            // Write values to memory
+            HostAPI hostAPI;
+            CUresult result = hostAPI.cuMemcpyHtoD(address, values.data(), count);
+            
+            if (result == CUDA_SUCCESS) {
+                std::ostringstream oss;
+                oss << "Filled " << count << " bytes at address 0x" << std::hex << address << std::dec;
+                printMessage(oss.str());
+            } else {
+                std::ostringstream oss;
+                oss << "Failed to fill memory at address 0x" << std::hex << address << std::dec 
+                    << ". Error code: " << result;
+                printError(oss.str());
+            }
+        } catch (...) {
+            printError("Invalid address, count, or value format.");
+        }
+    }
+
+    // Loadfile command - load file data into memory
+    void loadfileCommand(const std::vector<std::string>& args) {
+        if (args.size() < 3) {
+            printError("Usage: loadfile <address> <file> <size>");
+            printError("Example: loadfile 0x10000 data.bin 1024");
+            return;
+        }
+        
+        try {
+            // Parse address
+            uint64_t address = std::stoull(args[0], nullptr, 0);
+            
+            // Get file path
+            std::string filePath = args[1];
+            
+            // Parse size
+            size_t size = std::stoull(args[2], nullptr, 0);
+            
+            // Validate size
+            if (size == 0) {
+                printError("Size must be greater than 0.");
+                return;
+            }
+            
+            if (size > 1024 * 1024) { // Limit to 1MB
+                printError("Size must be less than 1MB.");
+                return;
+            }
+            
+            // Open file
+            std::ifstream file(filePath, std::ios::binary);
+            if (!file.is_open()) {
+                std::ostringstream oss;
+                oss << "Failed to open file: " << filePath;
+                printError(oss.str());
+                return;
+            }
+            
+            // Read file data
+            std::vector<uint8_t> data(size);
+            file.read(reinterpret_cast<char*>(data.data()), size);
+            size_t bytesRead = file.gcount();
+            file.close();
+            
+            if (bytesRead == 0) {
+                printError("Failed to read data from file or file is empty.");
+                return;
+            }
+            
+            if (bytesRead < size) {
+                std::ostringstream oss;
+                oss << "Warning: Only read " << bytesRead << " bytes from file, expected " << size << " bytes.";
+                printMessage(oss.str());
+            }
+            
+            // Write data to memory
+            HostAPI hostAPI;
+            CUresult result = hostAPI.cuMemcpyHtoD(address, data.data(), bytesRead);
+            
+            if (result == CUDA_SUCCESS) {
+                std::ostringstream oss;
+                oss << "Loaded " << bytesRead << " bytes from " << filePath 
+                    << " to address 0x" << std::hex << address << std::dec;
+                printMessage(oss.str());
+            } else {
+                std::ostringstream oss;
+                oss << "Failed to load file data to address 0x" << std::hex << address << std::dec 
+                    << ". Error code: " << result;
+                printError(oss.str());
+            }
+        } catch (...) {
+            printError("Invalid address, file path, or size format.");
+        }
+    }
+
     // Launch command - launch a kernel with parameters
     void launchCommand(const std::vector<std::string>& args) {
         if (args.empty()) {
@@ -916,6 +1116,18 @@ int CLIInterface::executeCommand(const std::string& command, const std::vector<s
         pImpl->registerCommand(args);
     } else if (cmd == "memory" || cmd == "mem" || cmd == "m") {
         pImpl->memoryCommand(args);
+    } else if (cmd == "alloc") {
+        pImpl->allocCommand(args);
+    } else if (cmd == "memcpy") {
+        pImpl->memcpyCommand(args);
+    } else if (cmd == "write") {
+        pImpl->writeCommand(args);
+    } else if (cmd == "fill") {
+        pImpl->fillCommand(args);
+    } else if (cmd == "loadfile") {
+        pImpl->loadfileCommand(args);
+    } else if (cmd == "launch") {
+        pImpl->launchCommand(args);
     } else if (cmd == "profile") {
         pImpl->profileCommand(args);
     } else if (cmd == "dump") {
