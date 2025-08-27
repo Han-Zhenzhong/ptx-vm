@@ -1,5 +1,7 @@
 # NVIDIA PTX Virtual Machine Contributors
 
+The project is hosted on GitHub at: https://gitee.com/hanzhenzhong/ptx-vm
+
 ## Project Maintainers
 - Zhenzhong Han <zhenzhong.han@qq.com> - Project Lead and Chief Architect
 

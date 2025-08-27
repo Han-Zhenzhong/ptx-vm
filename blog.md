@@ -4,6 +4,8 @@
 
 As GPU computing continues to evolve and become increasingly important in high-performance computing, machine learning, and scientific simulations, understanding how GPU code executes has become more critical than ever. Today, I'm excited to introduce the **NVIDIA PTX Virtual Machine**, an open-source project that provides a complete virtual machine implementation for executing NVIDIA PTX (Parallel Thread Execution) intermediate code.
 
+You can find the project on GitHub at: https://gitee.com/hanzhenzhong/ptx-vm
+
 ## What is PTX?
 
 Before diving into the virtual machine itself, let's briefly discuss what PTX is. PTX is NVIDIA's low-level parallel computing virtual instruction set architecture (ISA) that serves as an intermediate representation between high-level CUDA C code and the actual GPU hardware instructions. When you compile CUDA code with `nvcc`, it's first compiled to PTX code, which is then further compiled to the specific GPU architecture's machine code.
@@ -269,7 +271,7 @@ The NVIDIA PTX Virtual Machine represents a significant step forward in GPU comp
 
 Whether you're a student learning about GPU computing, a researcher exploring new optimization techniques, or a developer debugging complex CUDA applications, the PTX VM provides valuable tools and insights.
 
-The project is open source and available on GitHub. We welcome contributions from the community to help make it even better!
+The project is open source and available on GitHub at: https://gitee.com/hanzhenzhong/ptx-vm. We welcome contributions from the community to help make it even better!
 
 ---
 

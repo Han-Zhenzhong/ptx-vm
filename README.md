@@ -2,6 +2,8 @@
 
 A virtual machine implementation for executing NVIDIA PTX (Parallel Thread Execution) intermediate code. This project provides a complete VM architecture with advanced execution features, memory optimizations, and comprehensive tooling.
 
+The project is hosted on GitHub at: https://gitee.com/hanzhenzhong/ptx-vm
+
 ## Features
 
 ### Core Execution Engine
@@ -64,6 +66,10 @@ A virtual machine implementation for executing NVIDIA PTX (Parallel Thread Execu
 ### Build Instructions
 ```bash
 # Clone the repository
+git clone https://gitee.com/hanzhenzhong/ptx-vm.git
+cd ptx_vm
+
+# Create build directory
 mkdir build && cd build
 
 # Configure with CMake

@@ -5,6 +5,8 @@ This document provides essential information for developers working on the PTX V
 
 For information about future development plans, please refer to the [Next Phase Development Plan](docs/next_phase_development_plan.md).
 
+The PTX Virtual Machine project is hosted on GitHub at: https://gitee.com/hanzhenzhong/ptx-vm
+
 ## Code Structure Overview
 
 ### Directory Layout
