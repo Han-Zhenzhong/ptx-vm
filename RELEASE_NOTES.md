@@ -3,7 +3,7 @@
 ## Overview
 This is the first official release of the NVIDIA PTX Virtual Machine, a complete virtual machine implementation for executing NVIDIA PTX (Parallel Thread Execution) intermediate code. This release provides a fully functional environment for running PTX programs with comprehensive debugging, profiling, and visualization capabilities.
 
-The project is hosted on GitHub at: https://gitee.com/hanzhenzhong/ptx-vm
+The project is hosted on gitee at: https://gitee.com/hanzhenzhong/ptx-vm
 
 ## Key Features
 ### Core Execution Engine
