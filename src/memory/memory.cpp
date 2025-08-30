@@ -259,6 +259,15 @@ void* MemorySubsystem::getMemoryBuffer(MemorySpace space) {
     return it->second.buffer;
 }
 
+const void* MemorySubsystem::getMemoryBuffer(MemorySpace space) const {
+    auto it = pImpl->memorySpaces.find(space);
+    if (it == pImpl->memorySpaces.end()) {
+        return nullptr;
+    }
+
+    return it->second.buffer;
+}
+
 size_t MemorySubsystem::getMemorySize(MemorySpace space) const {
     auto it = pImpl->memorySpaces.find(space);
     if (it == pImpl->memorySpaces.end()) {

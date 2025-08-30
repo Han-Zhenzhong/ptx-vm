@@ -103,6 +103,7 @@ public:
 
     // Get pointer to memory buffer for a specific space
     void* getMemoryBuffer(MemorySpace space);
+    const void* getMemoryBuffer(MemorySpace space) const;
 
     // Get size of a memory space
     size_t getMemorySize(MemorySpace space) const;
