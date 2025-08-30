@@ -39,6 +39,14 @@ target_link_libraries(system_tests
 # Add test targets
 add_test(NAME system_tests_run COMMAND system_tests)
 
+# Copy examples directory to the same location as the system_tests executable
+add_custom_command(TARGET system_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/examples
+    ${CMAKE_CURRENT_BINARY_DIR}/examples
+    COMMENT "Copying examples directory to build directory"
+)
+
 # Add performance test target
 # add_executable(performance_tests
 #     system_tests/performance_test.cpp
