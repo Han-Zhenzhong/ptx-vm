@@ -13,10 +13,14 @@ add_executable(execution_result_demo
 # Link with host library
 target_link_libraries(parameter_passing_example
     host
+    decoder
+    parser
 )
 
 target_link_libraries(execution_result_demo
     host
+    decoder
+    parser
 )
 
 # Include directories
