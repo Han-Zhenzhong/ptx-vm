@@ -153,6 +153,13 @@ bool PTXVM::initialize() {
     
     // Initialize the register allocator with this VM
     m_registerAllocator = std::make_unique<RegisterAllocator>(this);
+    m_registerAllocator->initialize();
+    
+    // Initialize the register allocator with default parameters
+    // 16 physical registers, 1 warp, 32 threads per warp
+    if (!m_registerAllocator->allocateRegisters(16, 1, 32)) {
+        return false;
+    }
 
     pImpl->m_executor = std::move(m_executor);
     

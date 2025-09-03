@@ -89,6 +89,7 @@ public:
     // Execute all instructions
     bool execute() {
         if (m_decodedInstructions.empty() || m_executionComplete) {
+            std::cout << "No instructions to execute" << std::endl;
             return false;
         }
         
@@ -136,6 +137,7 @@ public:
                 m_warpScheduler->completeInstruction(issueInfo);
                 
                 if (!result) {
+                    std::cout << "Error executing instruction" << std::endl;
                     return false;
                 }
             } else {

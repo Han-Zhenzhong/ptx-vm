@@ -31,6 +31,7 @@ public:
                           uint32_t threadsPerWarp) {
         // Check if we have a valid register bank
         if (!m_physicalRegisterBank) {
+            std::cerr << "Error: No register bank available" << std::endl;
             return false;
         }
         
@@ -66,6 +67,7 @@ public:
             // Allocate spill memory
             m_spillMemory = std::make_unique<uint64_t[]>(m_spillSize / sizeof(uint64_t));
             if (!m_spillMemory) {
+                std::cerr << "Error: Failed to allocate spill memory" << std::endl;
                 return false;
             }
             
