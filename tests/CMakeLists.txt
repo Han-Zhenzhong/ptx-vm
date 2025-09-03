@@ -20,6 +20,8 @@ add_executable(system_tests
     # system_tests/divergence_performance_test.cpp
 )
 
+target_compile_options(system_tests PRIVATE -g)
+
 # Link system tests
 target_link_libraries(system_tests
     PRIVATE

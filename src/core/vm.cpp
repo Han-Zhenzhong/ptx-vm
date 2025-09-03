@@ -153,6 +153,8 @@ bool PTXVM::initialize() {
     
     // Initialize the register allocator with this VM
     m_registerAllocator = std::make_unique<RegisterAllocator>(this);
+
+    pImpl->m_executor = std::move(m_executor);
     
     return true;
 }

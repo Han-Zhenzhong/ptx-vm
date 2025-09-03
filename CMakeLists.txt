@@ -23,6 +23,8 @@ option(BUILD_TESTS "Build test programs" ON)
 option(BUILD_EXAMPLES "Build example programs" ON)
 option(BUILD_DOCUMENTATION "Build documentation" ON)
 
+add_compile_options(-g)
+
 # Add subdirectories
 add_subdirectory(src/core)
 add_subdirectory(src/decoder)
