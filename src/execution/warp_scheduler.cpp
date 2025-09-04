@@ -201,7 +201,7 @@ public:
         }
         
         // For now, assume warp has work unless all threads are inactive
-        return !m_warps[warpId]->allActive();
+        return m_warps[warpId]->anyActive();
     }
     
     // Check if all warps have completed execution
