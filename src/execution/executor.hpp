@@ -101,6 +101,7 @@ public:
     // Constructor/destructor
     PTXExecutor();
     PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubsystem);
+    PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubsystem, PerformanceCounters& performanceCounters);
     ~PTXExecutor();
 
     // Initialize the executor with parsed instructions

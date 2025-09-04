@@ -146,7 +146,7 @@ bool PTXVM::launchKernel() {
 
 bool PTXVM::initialize() {
     // Initialize the executor with register bank and memory subsystem
-    m_executor = std::make_unique<PTXExecutor>(*m_registerBank, *m_memorySubsystem);
+    m_executor = std::make_unique<PTXExecutor>(*m_registerBank, *m_memorySubsystem, *m_performanceCounters);
     
     // Initialize the debugger with the executor
     m_debugger = std::make_unique<Debugger>(m_executor.get());

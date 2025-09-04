@@ -94,7 +94,7 @@ public:
         }
         
         // Reset instruction counter
-        m_performanceCounters.increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED, m_decodedInstructions.size());
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED, m_decodedInstructions.size());
         
         // Use warp scheduler to execute instructions
         // This is a simplified approach - real implementation would be more complex
@@ -142,7 +142,7 @@ public:
                 }
             } else {
                 // Instruction skipped due to predicate
-                m_performanceCounters.increment(PerformanceCounterIDs::PREDICATE_SKIPPED);
+                m_performanceCounters->increment(PerformanceCounterIDs::PREDICATE_SKIPPED);
                 
                 // Update PC for this warp
                 size_t nextPC = m_currentInstructionIndex + 1;
@@ -184,7 +184,7 @@ public:
 
     // Get reference to performance counters
     PerformanceCounters& getPerformanceCounters() {
-        return m_performanceCounters;
+        return *m_performanceCounters;
     }
 
     // Build control flow graph from decoded instructions
@@ -210,6 +210,11 @@ public:
         );
     }
 
+    void setPerformanceCounters(PerformanceCounters& performanceCounters)
+    {
+        m_performanceCounters = &performanceCounters;
+    }
+
     // Execute a single instruction
     bool executeSingleInstruction() {
         if (m_currentInstructionIndex >= m_decodedInstructions.size()) {
@@ -220,13 +225,13 @@ public:
         const auto& instr = m_decodedInstructions[m_currentInstructionIndex];
         
         // Increment cycle counter
-        m_performanceCounters.increment(PerformanceCounterIDs::CYCLES);
+        m_performanceCounters->increment(PerformanceCounterIDs::CYCLES);
         
         // Execute the instruction
         bool result = executeDecodedInstruction(instr);
         
         // Increment instruction counter
-        m_performanceCounters.increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
         
         return result;
     }
@@ -424,16 +429,16 @@ private:
         // Increment appropriate memory read counter
         switch (space) {
             case MemorySpace::GLOBAL:
-                m_performanceCounters.increment(PerformanceCounterIDs::GLOBAL_MEMORY_READS);
+                m_performanceCounters->increment(PerformanceCounterIDs::GLOBAL_MEMORY_READS);
                 break;
             case MemorySpace::SHARED:
-                m_performanceCounters.increment(PerformanceCounterIDs::SHARED_MEMORY_READS);
+                m_performanceCounters->increment(PerformanceCounterIDs::SHARED_MEMORY_READS);
                 break;
             case MemorySpace::LOCAL:
-                m_performanceCounters.increment(PerformanceCounterIDs::LOCAL_MEMORY_READS);
+                m_performanceCounters->increment(PerformanceCounterIDs::LOCAL_MEMORY_READS);
                 break;
             case MemorySpace::PARAMETER:
-                m_performanceCounters.increment(PerformanceCounterIDs::PARAMETER_MEMORY_READS);
+                m_performanceCounters->increment(PerformanceCounterIDs::PARAMETER_MEMORY_READS);
                 break;
             default:
                 // Handle other memory spaces
@@ -468,16 +473,16 @@ private:
         // Increment appropriate memory write counter
         switch (space) {
             case MemorySpace::GLOBAL:
-                m_performanceCounters.increment(PerformanceCounterIDs::GLOBAL_MEMORY_WRITES);
+                m_performanceCounters->increment(PerformanceCounterIDs::GLOBAL_MEMORY_WRITES);
                 break;
             case MemorySpace::SHARED:
-                m_performanceCounters.increment(PerformanceCounterIDs::SHARED_MEMORY_WRITES);
+                m_performanceCounters->increment(PerformanceCounterIDs::SHARED_MEMORY_WRITES);
                 break;
             case MemorySpace::LOCAL:
-                m_performanceCounters.increment(PerformanceCounterIDs::LOCAL_MEMORY_WRITES);
+                m_performanceCounters->increment(PerformanceCounterIDs::LOCAL_MEMORY_WRITES);
                 break;
             case MemorySpace::PARAMETER:
-                m_performanceCounters.increment(PerformanceCounterIDs::PARAMETER_MEMORY_WRITES);
+                m_performanceCounters->increment(PerformanceCounterIDs::PARAMETER_MEMORY_WRITES);
                 break;
             default:
                 // Handle other memory spaces
@@ -501,7 +506,7 @@ private:
         
         // Get branch target
         // Increment branch counter
-        m_performanceCounters.increment(PerformanceCounterIDs::BRANCHES);
+        m_performanceCounters->increment(PerformanceCounterIDs::BRANCHES);
         
         if (instr.sources[0].type == OperandType::IMMEDIATE) {
             // Direct branch
@@ -513,7 +518,7 @@ private:
                 // This is a non-sequential branch
                 m_currentInstructionIndex = target;
                 // Increment divergent branch counter
-                m_performanceCounters.increment(PerformanceCounterIDs::DIVERGENT_BRANCHES);
+                m_performanceCounters->increment(PerformanceCounterIDs::DIVERGENT_BRANCHES);
             }
         } else if (instr.sources[0].type == OperandType::REGISTER) {
             // Indirect branch
@@ -527,7 +532,7 @@ private:
                 // This is a non-sequential branch
                 m_currentInstructionIndex = target;
                 // Increment divergent branch counter
-                m_performanceCounters.increment(PerformanceCounterIDs::DIVERGENT_BRANCHES);
+                m_performanceCounters->increment(PerformanceCounterIDs::DIVERGENT_BRANCHES);
             }
         } else {
             std::cerr << "Unsupported branch target type" << std::endl;
@@ -634,7 +639,7 @@ private:
         switch (operand.type) {
             case OperandType::REGISTER:
                 // Increment register read counter
-                m_performanceCounters.increment(PerformanceCounterIDs::REGISTER_READS);
+                m_performanceCounters->increment(PerformanceCounterIDs::REGISTER_READS);
                 return static_cast<int64_t>(m_registerBank->readRegister(operand.registerIndex));
             
             case OperandType::IMMEDIATE:
@@ -648,17 +653,17 @@ private:
                 // Increment appropriate memory read counter
                 switch (space) {
                     case MemorySpace::GLOBAL:
-                        m_performanceCounters.increment(PerformanceCounterIDs::GLOBAL_MEMORY_READS);
+                        m_performanceCounters->increment(PerformanceCounterIDs::GLOBAL_MEMORY_READS);
                         break;
                     case MemorySpace::SHARED:
-                        m_performanceCounters.increment(PerformanceCounterIDs::SHARED_MEMORY_READS);
+                        m_performanceCounters->increment(PerformanceCounterIDs::SHARED_MEMORY_READS);
                         break;
                     case MemorySpace::PARAMETER:
-                        m_performanceCounters.increment(PerformanceCounterIDs::PARAMETER_MEMORY_READS);
+                        m_performanceCounters->increment(PerformanceCounterIDs::PARAMETER_MEMORY_READS);
                         return static_cast<int64_t>(m_memorySubsystem->read<uint64_t>(space, operand.address));
                     
                     case MemorySpace::LOCAL:
-                        m_performanceCounters.increment(PerformanceCounterIDs::LOCAL_MEMORY_READS);
+                        m_performanceCounters->increment(PerformanceCounterIDs::LOCAL_MEMORY_READS);
                         return static_cast<int64_t>(m_memorySubsystem->read<uint64_t>(space, operand.address));
                     
                     default:
@@ -676,7 +681,7 @@ private:
     // Store value in register with performance tracking
     void storeRegisterValue(size_t index, uint64_t value) {
         // Increment register write counter
-        m_performanceCounters.increment(PerformanceCounterIDs::REGISTER_WRITES);
+        m_performanceCounters->increment(PerformanceCounterIDs::REGISTER_WRITES);
         
         // Write to register
         m_registerBank->writeRegister(index, value);
@@ -808,7 +813,7 @@ private:
     bool m_executionComplete = false;
     
     // Performance counters
-    PerformanceCounters m_performanceCounters;
+    PerformanceCounters* m_performanceCounters;
     
     // Execution engine components
     std::unique_ptr<WarpScheduler> m_warpScheduler;
@@ -827,6 +832,14 @@ PTXExecutor::PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubs
       m_performanceCounters(pImpl->getPerformanceCounters()) {
     // Override the default register bank and memory subsystem with the provided ones
     pImpl->setComponents(registerBank, memorySubsystem);
+}
+
+PTXExecutor::PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubsystem, PerformanceCounters& performanceCounters) 
+    : pImpl(std::make_unique<Impl>()), 
+      m_performanceCounters(performanceCounters) {
+    // Override the default register bank and memory subsystem with the provided ones
+    pImpl->setComponents(registerBank, memorySubsystem);
+    pImpl->setPerformanceCounters(performanceCounters);
 }
 
 PTXExecutor::~PTXExecutor() = default;
