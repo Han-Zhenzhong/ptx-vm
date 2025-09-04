@@ -99,6 +99,9 @@ public:
         // Use warp scheduler to execute instructions
         // This is a simplified approach - real implementation would be more complex
         while (m_currentInstructionIndex < m_decodedInstructions.size()) {
+            // Increment cycle counter for each iteration
+            m_performanceCounters->increment(PerformanceCounterIDs::CYCLES);
+
             // Select next warp to execute
             uint32_t warpId = m_warpScheduler->selectNextWarp();
             
