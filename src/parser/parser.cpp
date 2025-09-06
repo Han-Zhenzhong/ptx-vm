@@ -148,7 +148,7 @@ public:
             operand.isAddress = true;
             // 去除[]
             str = str.substr(1, str.size() - 2);
-            // 支持[%r0+4]等简单表达式，暂存为address=0
+            // 这里不管str内容是什么都视为MEMORY，address=0（如有需要可扩展符号名字段）
             operand.address = 0;
         } else if (!str.empty() && str[0] == '%') {
             // 判断寄存器
@@ -169,6 +169,11 @@ public:
             // 谓词寄存器
             operand.type = OperandType::PREDICATE;
             operand.predicateIndex = std::stoi(str.substr(1));
+        } else if (!str.empty()) {
+            // 只要非空，且不是其他类型，都视为符号内存寻址
+            operand.type = OperandType::MEMORY;
+            operand.isAddress = true;
+            operand.address = 0;
         } else {
             operand.type = OperandType::UNKNOWN;
         }

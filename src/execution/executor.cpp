@@ -758,28 +758,26 @@ private:
             impl.m_currentInstructionIndex++;
             return true;
         }
-        
         // Get the source operand (parameter memory address)
         uint64_t paramOffset = 0;
         if (instr.sources[0].type == OperandType::IMMEDIATE) {
             paramOffset = static_cast<uint64_t>(instr.sources[0].immediateValue);
         } else if (instr.sources[0].type == OperandType::REGISTER) {
             paramOffset = impl.m_registerBank->readRegister(instr.sources[0].registerIndex);
+        } else if (instr.sources[0].type == OperandType::MEMORY) {
+            // [result_ptr] 这种情况，直接用偏移0（或可扩展符号表）
+            paramOffset = 0;
         } else {
             std::cerr << "Invalid source operand type for LD_PARAM" << std::endl;
             impl.m_currentInstructionIndex++;
             return true;
         }
-        
         // Calculate the actual parameter memory address
         uint64_t paramAddress = 0x1000 + paramOffset;  // PARAMETER_MEMORY_BASE = 0x1000
-        
         // Read from parameter memory
         uint64_t value = impl.m_memorySubsystem->read<uint64_t>(MemorySpace::GLOBAL, paramAddress);
-        
         // Store result in destination register
         impl.storeRegisterValue(instr.dest.registerIndex, value);
-        
         // Move to next instruction
         impl.m_currentInstructionIndex++;
         return true;
