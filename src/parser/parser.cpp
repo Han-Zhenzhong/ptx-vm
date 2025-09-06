@@ -229,25 +229,21 @@ private:
         if (trimmedLine.back() == ':' || trimmedLine[0] == '.') {
             return false;
         }
-        // 正则表达式支持更复杂的操作数（包括负号、方括号、点、百分号、数字等）
-        std::regex instructionRegex(R"(^(@\w+)?\s*(\w+)(\.[\w.]+)?\s+(.+)$)");
+        // 支持复合操作码和类型修饰符分离（如ld.param.u64 => opcode=ld.param, modifier=u64）
+        std::regex instructionRegex(R"(^(@\w+)?\s*([\w]+(?:\.[\w]+)*?)\.(\w+)\s+(.+)$)");
         std::smatch matches;
         if (std::regex_search(trimmedLine, matches, instructionRegex) && matches.size() > 4) {
             // 谓词
             if (matches[1].matched) {
                 instruction.predicate = matches[1].str().substr(1);
             }
-            // 操作码
+            // 操作码（如ld.param）
             instruction.opcode = matches[2].str();
-            // 修饰符
+            // 修饰符（如u64）
             if (matches[3].matched) {
-                std::string modifiersStr = matches[3].str().substr(1);
-                std::istringstream modStream(modifiersStr);
-                std::string modifier;
-                while (std::getline(modStream, modifier, '.')) {
-                    if (!modifier.empty()) {
-                        instruction.modifiers.push_back(modifier);
-                    }
+                std::string modifiersStr = matches[3].str();
+                if (!modifiersStr.empty()) {
+                    instruction.modifiers.push_back(modifiersStr);
                 }
             }
             // 操作数
@@ -262,22 +258,44 @@ private:
             return true;
         } else {
             // 无操作数指令
-            std::regex simpleRegex(R"(^(@\w+)?\s*(\w+)(\.[\w.]+)?$)");
+            std::regex simpleRegex(R"(^(@\w+)?\s*([\w]+(?:\.[\w]+)*?)\.(\w+)$)");
             if (std::regex_search(trimmedLine, matches, simpleRegex) && matches.size() > 2) {
                 if (matches[1].matched) {
                     instruction.predicate = matches[1].str().substr(1);
                 }
                 instruction.opcode = matches[2].str();
                 if (matches[3].matched) {
-                    std::string modifiersStr = matches[3].str().substr(1);
-                    std::istringstream modStream(modifiersStr);
-                    std::string modifier;
-                    while (std::getline(modStream, modifier, '.')) {
-                        if (!modifier.empty()) {
-                            instruction.modifiers.push_back(modifier);
-                        }
+                    std::string modifiersStr = matches[3].str();
+                    if (!modifiersStr.empty()) {
+                        instruction.modifiers.push_back(modifiersStr);
                     }
                 }
+                return true;
+            }
+            // 没有修饰符的情况
+            std::regex noModRegex(R"(^(@\w+)?\s*([\w]+(?:\.[\w]+)*)\s+(.+)$)");
+            if (std::regex_search(trimmedLine, matches, noModRegex) && matches.size() > 3) {
+                if (matches[1].matched) {
+                    instruction.predicate = matches[1].str().substr(1);
+                }
+                instruction.opcode = matches[2].str();
+                std::string operandsStr = matches[3].str();
+                std::vector<std::string> operands = splitOperands(operandsStr);
+                if (!operands.empty()) {
+                    instruction.dest = operands[0];
+                    for (size_t i = 1; i < operands.size(); ++i) {
+                        instruction.sources.push_back(operands[i]);
+                    }
+                }
+                return true;
+            }
+            // 无操作数无修饰符
+            std::regex noModSimpleRegex(R"(^(@\w+)?\s*([\w]+(?:\.[\w]+)*)$)");
+            if (std::regex_search(trimmedLine, matches, noModSimpleRegex) && matches.size() > 2) {
+                if (matches[1].matched) {
+                    instruction.predicate = matches[1].str().substr(1);
+                }
+                instruction.opcode = matches[2].str();
                 return true;
             }
         }
