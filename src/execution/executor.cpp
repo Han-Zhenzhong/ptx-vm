@@ -258,47 +258,238 @@ private:
         switch (instr.type) {
             case InstructionTypes::ADD:
                 return executeADD(instr);
-            
             case InstructionTypes::SUB:
                 return executeSUB(instr);
-            
             case InstructionTypes::MUL:
                 return executeMUL(instr);
-            
             case InstructionTypes::DIV:
                 return executeDIV(instr);
-            
+            case InstructionTypes::AND:
+                return executeAND(instr);
+            case InstructionTypes::OR:
+                return executeOR(instr);
+            case InstructionTypes::XOR:
+                return executeXOR(instr);
+            case InstructionTypes::NOT:
+                return executeNOT(instr);
+            case InstructionTypes::SHL:
+                return executeSHL(instr);
+            case InstructionTypes::SHR:
+                return executeSHR(instr);
+            case InstructionTypes::NEG:
+                return executeNEG(instr);
+            case InstructionTypes::ABS:
+                return executeABS(instr);
             case InstructionTypes::MOV:
                 return executeMOV(instr);
-            
             case InstructionTypes::LD:
                 return executeLD(instr);
-            
             case InstructionTypes::ST:
                 return executeST(instr);
-            
             case InstructionTypes::BRA:
                 return executeBRA(instr);
-            
+            case InstructionTypes::JUMP:
+                return executeJUMP(instr);
+            case InstructionTypes::CALL:
+                return executeCALL(instr);
             case InstructionTypes::RET:
                 return executeEXIT(instr);
-            
             case InstructionTypes::NOP:
                 return executeNOP(instr);
-            
             case InstructionTypes::LD_PARAM:
                 return executeLDParam(*this, instr);
-                
             case InstructionTypes::ST_PARAM:
                 return executeSTParam(*this, instr);
-            
+            case InstructionTypes::CMOV:
+                return executeCMOV(instr);
+            case InstructionTypes::SYNC:
+                return executeSYNC(instr);
+            case InstructionTypes::MEMBAR:
+                return executeMEMBAR(instr);
+            case InstructionTypes::BARRIER:
+                return executeBARRIER(instr);
             default:
                 std::cerr << "Unsupported instruction type: " << static_cast<int>(instr.type) << std::endl;
                 m_currentInstructionIndex++;
                 return true; // Continue execution
         }
     }
-    
+
+    // --- 新增指令类型的执行函数 ---
+    bool executeAND(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 2) {
+            std::cerr << "Invalid AND instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        int64_t src0 = getSourceValue(instr.sources[0]);
+        int64_t src1 = getSourceValue(instr.sources[1]);
+        int64_t result = src0 & src1;
+        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(result));
+        m_currentInstructionIndex++;
+        return true;
+    }
+    bool executeOR(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 2) {
+            std::cerr << "Invalid OR instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        int64_t src0 = getSourceValue(instr.sources[0]);
+        int64_t src1 = getSourceValue(instr.sources[1]);
+        int64_t result = src0 | src1;
+        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(result));
+        m_currentInstructionIndex++;
+        return true;
+    }
+    bool executeXOR(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 2) {
+            std::cerr << "Invalid XOR instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        int64_t src0 = getSourceValue(instr.sources[0]);
+        int64_t src1 = getSourceValue(instr.sources[1]);
+        int64_t result = src0 ^ src1;
+        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(result));
+        m_currentInstructionIndex++;
+        return true;
+    }
+    bool executeNOT(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 1) {
+            std::cerr << "Invalid NOT instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        int64_t src = getSourceValue(instr.sources[0]);
+        int64_t result = ~src;
+        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(result));
+        m_currentInstructionIndex++;
+        return true;
+    }
+    bool executeSHL(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 2) {
+            std::cerr << "Invalid SHL instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        int64_t src0 = getSourceValue(instr.sources[0]);
+        int64_t src1 = getSourceValue(instr.sources[1]);
+        int64_t result = src0 << src1;
+        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(result));
+        m_currentInstructionIndex++;
+        return true;
+    }
+    bool executeSHR(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 2) {
+            std::cerr << "Invalid SHR instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        int64_t src0 = getSourceValue(instr.sources[0]);
+        int64_t src1 = getSourceValue(instr.sources[1]);
+        int64_t result = src0 >> src1;
+        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(result));
+        m_currentInstructionIndex++;
+        return true;
+    }
+    bool executeNEG(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 1) {
+            std::cerr << "Invalid NEG instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        int64_t src = getSourceValue(instr.sources[0]);
+        int64_t result = -src;
+        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(result));
+        m_currentInstructionIndex++;
+        return true;
+    }
+    bool executeABS(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 1) {
+            std::cerr << "Invalid ABS instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        int64_t src = getSourceValue(instr.sources[0]);
+        int64_t result = src < 0 ? -src : src;
+        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(result));
+        m_currentInstructionIndex++;
+        return true;
+    }
+    bool executeJUMP(const DecodedInstruction& instr) {
+        // 跳转到立即数或寄存器指定的指令索引
+        if (instr.sources.size() != 1) {
+            std::cerr << "Invalid JUMP instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        size_t target = 0;
+        if (instr.sources[0].type == OperandType::IMMEDIATE) {
+            target = static_cast<size_t>(instr.sources[0].immediateValue);
+        } else if (instr.sources[0].type == OperandType::REGISTER) {
+            target = static_cast<size_t>(getSourceValue(instr.sources[0]));
+        } else {
+            std::cerr << "Unsupported JUMP target type" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        m_currentInstructionIndex = target;
+        return true;
+    }
+    bool executeCALL(const DecodedInstruction& instr) {
+        // 这里只做简单跳转，实际应保存返回地址
+        if (instr.sources.size() != 1) {
+            std::cerr << "Invalid CALL instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        size_t target = 0;
+        if (instr.sources[0].type == OperandType::IMMEDIATE) {
+            target = static_cast<size_t>(instr.sources[0].immediateValue);
+        } else if (instr.sources[0].type == OperandType::REGISTER) {
+            target = static_cast<size_t>(getSourceValue(instr.sources[0]));
+        } else {
+            std::cerr << "Unsupported CALL target type" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        // TODO: 保存返回地址
+        m_currentInstructionIndex = target;
+        return true;
+    }
+    bool executeCMOV(const DecodedInstruction& instr) {
+        // 条件移动，假设第一个源为条件，第二个为值
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 2) {
+            std::cerr << "Invalid CMOV instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        int64_t cond = getSourceValue(instr.sources[0]);
+        int64_t val = getSourceValue(instr.sources[1]);
+        if (cond) {
+            storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(val));
+        }
+        m_currentInstructionIndex++;
+        return true;
+    }
+    bool executeSYNC(const DecodedInstruction& instr) {
+        // 简单实现：同步点，实际应与warp调度/线程同步机制结合
+        // 这里只是占位
+        m_currentInstructionIndex++;
+        return true;
+    }
+    bool executeMEMBAR(const DecodedInstruction& instr) {
+        // 内存屏障，占位
+        m_currentInstructionIndex++;
+        return true;
+    }
+    bool executeBARRIER(const DecodedInstruction& instr) {
+        // 屏障，占位
+        m_currentInstructionIndex++;
+        return true;
+    }
+
     // Execute ADD instruction
     bool executeADD(const DecodedInstruction& instr) {
         if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 2) {
