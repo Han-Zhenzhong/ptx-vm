@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <regex>
 #include "instruction_types.hpp"
 
 class PTXParser {
