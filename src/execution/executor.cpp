@@ -92,67 +92,48 @@ public:
             std::cout << "No instructions to execute" << std::endl;
             return false;
         }
-        
-        // Reset instruction counter
         m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED, m_decodedInstructions.size());
-        
-        // Use warp scheduler to execute instructions
-        // This is a simplified approach - real implementation would be more complex
-        while (m_currentInstructionIndex < m_decodedInstructions.size()) {
-            // Increment cycle counter for each iteration
+        size_t numWarps = m_warpScheduler->getNumWarps();
+        std::vector<bool> warpDone(numWarps, false);
+        size_t doneWarps = 0;
+        while (doneWarps < numWarps) {
             m_performanceCounters->increment(PerformanceCounterIDs::CYCLES);
-
-            // Select next warp to execute
-            uint32_t warpId = m_warpScheduler->selectNextWarp();
-            
-            if (warpId >= m_warpScheduler->getNumWarps()) {
-                // No warps available
-                break;
-            }
-            
-            // Get active threads in this warp
-            uint64_t activeMask = m_warpScheduler->getActiveThreads(warpId);
-            
-            // If no active threads, skip this warp
-            if (activeMask == 0) {
-                continue;
-            }
-            
-            // Issue instruction from current warp
-            InstructionIssueInfo issueInfo;
-            if (!m_warpScheduler->issueInstruction(issueInfo)) {
-                // No instruction to issue, move to next warp
-                continue;
-            }
-            
-            // Get current instruction
-            const DecodedInstruction& instr = m_decodedInstructions[issueInfo.instructionIndex];
-            
-            // Check predicate before executing instruction
-            // This handles predicated execution and divergence
-            bool shouldExecute = m_predicateHandler->shouldExecute(instr);
-            
-            if (shouldExecute) {
-                // Execute the instruction
-                bool result = executeDecodedInstruction(m_decodedInstructions[issueInfo.instructionIndex]);
-                
-                // Complete instruction execution
-                m_warpScheduler->completeInstruction(issueInfo);
-                
-                if (!result) {
-                    std::cout << "Error executing instruction" << std::endl;
-                    return false;
+            for (uint32_t warpId = 0; warpId < numWarps; ++warpId) {
+                if (warpDone[warpId]) continue;
+                uint64_t activeMask = m_warpScheduler->getActiveThreads(warpId);
+                if (activeMask == 0) {
+                    warpDone[warpId] = true;
+                    ++doneWarps;
+                    continue;
                 }
-            } else {
-                // Instruction skipped due to predicate
-                m_performanceCounters->increment(PerformanceCounterIDs::PREDICATE_SKIPPED);
-                
-                // Update PC for this warp
-                size_t nextPC = m_currentInstructionIndex + 1;
-                m_warpScheduler->setCurrentPC(warpId, nextPC);
+                InstructionIssueInfo issueInfo;
+                if (!m_warpScheduler->issueInstruction(issueInfo)) {
+                    // No instruction to issue, mark as done
+                    warpDone[warpId] = true;
+                    ++doneWarps;
+                    continue;
+                }
+                if (issueInfo.instructionIndex >= m_decodedInstructions.size()) {
+                    warpDone[warpId] = true;
+                    ++doneWarps;
+                    continue;
+                }
+                const DecodedInstruction& instr = m_decodedInstructions[issueInfo.instructionIndex];
+                bool shouldExecute = m_predicateHandler->shouldExecute(instr);
+                if (shouldExecute) {
+                    bool result = executeDecodedInstruction(instr);
+                    m_warpScheduler->completeInstruction(issueInfo);
+                    if (!result) {
+                        std::cout << "Error executing instruction" << std::endl;
+                        return false;
+                    }
+                } else {
+                    m_performanceCounters->increment(PerformanceCounterIDs::PREDICATE_SKIPPED);
+                    // 跳过时也推进PC
+                    m_warpScheduler->completeInstruction(issueInfo);
+                }
             }
         }
-        
         m_executionComplete = true;
         return true;
     }
@@ -1030,7 +1011,7 @@ PTXExecutor::PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubs
     : pImpl(std::make_unique<Impl>()), 
       m_performanceCounters(performanceCounters) {
     // Override the default register bank and memory subsystem with the provided ones
-    pImpl->setComponents(registerBank, memorySubsystem);
+    // pImpl->setComponents(registerBank, memorySubsystem);
     pImpl->setPerformanceCounters(performanceCounters);
 }
 

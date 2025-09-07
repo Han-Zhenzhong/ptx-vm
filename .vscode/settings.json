@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "*.ttss": "css",
+        "*.wxss": "css",
+        "*.sjs": "javascript",
+        "*.ttml": "ttml",
+        "*.wxml": "ttml",
+        "*.sk": "ttml",
+        "stdexcept": "cpp"
+    }
+}
