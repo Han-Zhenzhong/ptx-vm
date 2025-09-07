@@ -255,13 +255,14 @@ private:
 
     // Execute ST for a specific memory space
     bool executeSTMemorySpace(const DecodedInstruction& instr, MemorySpace space) {
-        if (instr.sources.size() != 2 || instr.sources[0].type != OperandType::MEMORY) {
+        // New convention: dest is memory address, sources[0] is data
+        if (instr.dest.type != OperandType::MEMORY || instr.sources.size() != 1) {
             std::cerr << "Invalid ST instruction format" << std::endl;
             m_currentInstructionIndex++;
             return true;
         }
-        int64_t src = getSourceValue(instr.sources[1]);
-        uint64_t address = instr.sources[0].address;
+        int64_t src = getSourceValue(instr.sources[0]);
+        uint64_t address = instr.dest.address;
         // Increment appropriate memory write counter
         switch (space) {
             case MemorySpace::GLOBAL:
