@@ -21,6 +21,7 @@ enum class InstructionTypes {
     SUB,
     MUL,
     DIV,
+    REM, // Remainder/modulo
     AND,
     OR,
     XOR,

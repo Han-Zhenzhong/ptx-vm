@@ -245,6 +245,8 @@ private:
                 return executeMUL(instr);
             case InstructionTypes::DIV:
                 return executeDIV(instr);
+            case InstructionTypes::REM:
+                return executeREM(instr);
             case InstructionTypes::AND:
                 return executeAND(instr);
             case InstructionTypes::OR:
@@ -294,6 +296,26 @@ private:
                 m_currentInstructionIndex++;
                 return true; // Continue execution
         }
+    }
+
+    // Execute REM (remainder) instruction
+    bool executeREM(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 2) {
+            std::cerr << "Invalid REM instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        int64_t src0 = getSourceValue(instr.sources[0]);
+        int64_t src1 = getSourceValue(instr.sources[1]);
+        if (src1 == 0) {
+            std::cerr << "Division by zero in REM" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        int64_t result = src0 % src1;
+        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(result));
+        m_currentInstructionIndex++;
+        return true;
     }
 
     // --- 新增指令类型的执行函数 ---

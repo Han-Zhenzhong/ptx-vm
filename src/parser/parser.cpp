@@ -105,6 +105,7 @@ public:
             {"sub", InstructionTypes::SUB},
             {"mul", InstructionTypes::MUL},
             {"div", InstructionTypes::DIV},
+            {"rem", InstructionTypes::REM},
             {"and", InstructionTypes::AND},
             {"or", InstructionTypes::OR},
             {"xor", InstructionTypes::XOR},
@@ -130,7 +131,9 @@ public:
         };
         auto it = table.find(op);
         if (it != table.end()) return it->second;
-        // 支持如ld.param/st.param等复合指令
+        // 支持如ld.global/ld.shared/ld.local等复合指令
+        if (op.find("ld.") == 0) return InstructionTypes::LD;
+        if (op.find("st.") == 0) return InstructionTypes::ST;
         if (op == "ld" || op == "ld.param") return InstructionTypes::LD_PARAM;
         if (op == "st" || op == "st.param") return InstructionTypes::ST_PARAM;
         return InstructionTypes::MAX_INSTRUCTION_TYPE;
