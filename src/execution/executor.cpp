@@ -221,6 +221,68 @@ public:
     }
     
 private:
+    // Execute LD for a specific memory space
+    bool executeLDMemorySpace(const DecodedInstruction& instr, MemorySpace space) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 1 ||
+            instr.sources[0].type != OperandType::MEMORY) {
+            std::cerr << "Invalid LD instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        uint64_t address = instr.sources[0].address;
+        // Increment appropriate memory read counter
+        switch (space) {
+            case MemorySpace::GLOBAL:
+                m_performanceCounters->increment(PerformanceCounterIDs::GLOBAL_MEMORY_READS);
+                break;
+            case MemorySpace::SHARED:
+                m_performanceCounters->increment(PerformanceCounterIDs::SHARED_MEMORY_READS);
+                break;
+            case MemorySpace::LOCAL:
+                m_performanceCounters->increment(PerformanceCounterIDs::LOCAL_MEMORY_READS);
+                break;
+            case MemorySpace::PARAMETER:
+                m_performanceCounters->increment(PerformanceCounterIDs::PARAMETER_MEMORY_READS);
+                break;
+            default:
+                break;
+        }
+        uint64_t value = m_memorySubsystem->read<uint64_t>(space, address);
+        storeRegisterValue(instr.dest.registerIndex, value);
+        m_currentInstructionIndex++;
+        return true;
+    }
+
+    // Execute ST for a specific memory space
+    bool executeSTMemorySpace(const DecodedInstruction& instr, MemorySpace space) {
+        if (instr.sources.size() != 2 || instr.sources[0].type != OperandType::MEMORY) {
+            std::cerr << "Invalid ST instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        int64_t src = getSourceValue(instr.sources[1]);
+        uint64_t address = instr.sources[0].address;
+        // Increment appropriate memory write counter
+        switch (space) {
+            case MemorySpace::GLOBAL:
+                m_performanceCounters->increment(PerformanceCounterIDs::GLOBAL_MEMORY_WRITES);
+                break;
+            case MemorySpace::SHARED:
+                m_performanceCounters->increment(PerformanceCounterIDs::SHARED_MEMORY_WRITES);
+                break;
+            case MemorySpace::LOCAL:
+                m_performanceCounters->increment(PerformanceCounterIDs::LOCAL_MEMORY_WRITES);
+                break;
+            case MemorySpace::PARAMETER:
+                m_performanceCounters->increment(PerformanceCounterIDs::PARAMETER_MEMORY_WRITES);
+                break;
+            default:
+                break;
+        }
+        m_memorySubsystem->write<uint64_t>(space, address, static_cast<uint64_t>(src));
+        m_currentInstructionIndex++;
+        return true;
+    }
     // Execute a decoded instruction
     bool executeDecodedInstruction(const DecodedInstruction& instr) {
         // Check if instruction has predicate and should be skipped
@@ -269,6 +331,22 @@ private:
                 return executeLD(instr);
             case InstructionTypes::ST:
                 return executeST(instr);
+            case InstructionTypes::LD_GLOBAL:
+                return executeLDMemorySpace(instr, MemorySpace::GLOBAL);
+            case InstructionTypes::LD_SHARED:
+                return executeLDMemorySpace(instr, MemorySpace::SHARED);
+            case InstructionTypes::LD_LOCAL:
+                return executeLDMemorySpace(instr, MemorySpace::LOCAL);
+            case InstructionTypes::LD_PARAM:
+                return executeLDParam(*this, instr);
+            case InstructionTypes::ST_GLOBAL:
+                return executeSTMemorySpace(instr, MemorySpace::GLOBAL);
+            case InstructionTypes::ST_SHARED:
+                return executeSTMemorySpace(instr, MemorySpace::SHARED);
+            case InstructionTypes::ST_LOCAL:
+                return executeSTMemorySpace(instr, MemorySpace::LOCAL);
+            case InstructionTypes::ST_PARAM:
+                return executeSTParam(*this, instr);
             case InstructionTypes::BRA:
                 return executeBRA(instr);
             case InstructionTypes::JUMP:
@@ -279,10 +357,6 @@ private:
                 return executeEXIT(instr);
             case InstructionTypes::NOP:
                 return executeNOP(instr);
-            case InstructionTypes::LD_PARAM:
-                return executeLDParam(*this, instr);
-            case InstructionTypes::ST_PARAM:
-                return executeSTParam(*this, instr);
             case InstructionTypes::CMOV:
                 return executeCMOV(instr);
             case InstructionTypes::SYNC:

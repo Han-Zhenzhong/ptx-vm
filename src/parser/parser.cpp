@@ -128,14 +128,20 @@ public:
             {"st.param", InstructionTypes::ST_PARAM},
             {"nop", InstructionTypes::NOP},
             {"barrier", InstructionTypes::BARRIER},
+            {"ld.global", InstructionTypes::LD_GLOBAL},
+            {"ld.shared", InstructionTypes::LD_SHARED},
+            {"ld.local", InstructionTypes::LD_LOCAL},
+            {"ld.param", InstructionTypes::LD_PARAM},
+            {"st.global", InstructionTypes::ST_GLOBAL},
+            {"st.shared", InstructionTypes::ST_SHARED},
+            {"st.local", InstructionTypes::ST_LOCAL},
+            {"st.param", InstructionTypes::ST_PARAM},
         };
         auto it = table.find(op);
         if (it != table.end()) return it->second;
-        // 支持如ld.global/ld.shared/ld.local等复合指令
+        // fallback for any other ld.* or st.*
         if (op.find("ld.") == 0) return InstructionTypes::LD;
         if (op.find("st.") == 0) return InstructionTypes::ST;
-        if (op == "ld" || op == "ld.param") return InstructionTypes::LD_PARAM;
-        if (op == "st" || op == "st.param") return InstructionTypes::ST_PARAM;
         return InstructionTypes::MAX_INSTRUCTION_TYPE;
     }
 

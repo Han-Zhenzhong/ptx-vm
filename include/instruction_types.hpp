@@ -44,6 +44,12 @@ enum class InstructionTypes {
     // Memory operations
     LD,
     ST,
+    LD_GLOBAL,
+    LD_SHARED,
+    LD_LOCAL,
+    ST_GLOBAL,
+    ST_SHARED,
+    ST_LOCAL,
     MOV,
     CMOV,
     
