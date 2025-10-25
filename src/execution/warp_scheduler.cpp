@@ -1,6 +1,7 @@
 #include "warp_scheduler.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <unordered_map>
 
 // Private implementation class
 class WarpScheduler::Impl {
@@ -214,6 +215,108 @@ public:
         return true;
     }
     
+    // CTA-level synchronization
+    bool syncThreadsInCta(uint32_t ctaId, size_t syncPC) {
+        // Check if this is the first warp to reach the synchronization point
+        if (m_syncState.find(ctaId) == m_syncState.end()) {
+            // Initialize sync state for this CTA
+            SyncState state;
+            state.ctaId = ctaId;
+            state.syncPC = syncPC;
+            state.arrivalMask = 0;
+            state.syncCount = 0;
+            m_syncState[ctaId] = state;
+        }
+        
+        SyncState& state = m_syncState[ctaId];
+        
+        // Mark this warp as arrived
+        state.arrivalMask |= (1 << m_currentWarp);
+        
+        // Increment sync count
+        state.syncCount++;
+        
+        // Check if all warps in CTA have reached the synchronization point
+        if (checkCtaThreadsCompleted(ctaId)) {
+            // All threads have reached the synchronization point, continue execution
+            // Reset sync state
+            state.arrivalMask = 0;
+            state.syncCount = 0;
+            
+            return true;
+        }
+        
+        // Not all threads have arrived yet, return false
+        return false;
+    }
+    
+    // Grid-level synchronization
+    bool syncThreadsInGrid(uint32_t gridId, size_t syncPC) {
+        // Check if this is the first warp to reach the synchronization point
+        if (m_gridSyncState.find(gridId) == m_gridSyncState.end()) {
+            // Initialize sync state for this grid
+            SyncState state;
+            state.gridId = gridId;
+            state.syncPC = syncPC;
+            state.arrivalMask = 0;
+            state.syncCount = 0;
+            m_gridSyncState[gridId] = state;
+        }
+        
+        SyncState& state = m_gridSyncState[gridId];
+        
+        // Mark this warp as arrived
+        state.arrivalMask |= (1 << m_currentWarp);
+        
+        // Increment sync count
+        state.syncCount++;
+        
+        // Check if all CTAs in grid have reached the synchronization point
+        if (checkGridCtasCompleted(gridId)) {
+            // All CTAs have reached the synchronization point, continue execution
+            // Reset sync state
+            state.arrivalMask = 0;
+            state.syncCount = 0;
+            
+            return true;
+        }
+        
+        // Not all CTAs have arrived yet, return false
+        return false;
+    }
+    
+    // Check if all threads in CTA have reached synchronization point
+    bool checkCtaThreadsCompleted(uint32_t ctaId) {
+        // Implementation specific to CTA thread tracking
+        // This is a simplified implementation
+        if (m_syncState.find(ctaId) == m_syncState.end()) {
+            return false;
+        }
+        
+        const SyncState& state = m_syncState[ctaId];
+        
+        // For simplicity, we assume all threads complete when all warps have synced
+        // In a real implementation, this would check the actual number of warps
+        // in the CTA against the sync count
+        return state.syncCount >= WARPS_PER_CTA;
+    }
+    
+    // Check if all CTAs in grid have reached synchronization point
+    bool checkGridCtasCompleted(uint32_t gridId) {
+        // Implementation specific to grid CTA tracking
+        // This is a simplified implementation
+        if (m_gridSyncState.find(gridId) == m_gridSyncState.end()) {
+            return false;
+        }
+        
+        const SyncState& state = m_gridSyncState[gridId];
+        
+        // For simplicity, we assume all CTAs complete when all CTAs have synced
+        // In a real implementation, this would check the actual number of CTAs
+        // in the grid against the sync count
+        return state.syncCount >= CTAS_PER_GRID;
+    }
+    
 private:
     // Core configuration
     uint32_t m_numWarps;
@@ -222,6 +325,10 @@ private:
     
     // Warps
     std::vector<std::unique_ptr<Warp>> m_warps;
+    
+    // Synchronization state
+    std::unordered_map<uint32_t, SyncState> m_syncState;
+    std::unordered_map<uint32_t, SyncState> m_gridSyncState;
 };
 
 WarpScheduler::WarpScheduler(uint32_t numWarps, uint32_t threadsPerWarp) : 
@@ -302,110 +409,22 @@ bool WarpScheduler::allWarpsComplete() const {
 
 // CTA-level synchronization
 bool WarpScheduler::syncThreadsInCta(uint32_t ctaId, size_t syncPC) {
-    // Get current warp
-    uint32_t currentWarpId = m_currentWarp;
-    
-    // Check if this is the first warp to reach the synchronization point
-    if (m_syncState.find(ctaId) == m_syncState.end()) {
-        // Initialize sync state for this CTA
-        SyncState state;
-        state.ctaId = ctaId;
-        state.syncPC = syncPC;
-        state.arrivalMask = 0;
-        state.syncCount = 0;
-        m_syncState[ctaId] = state;
-    }
-    
-    SyncState& state = m_syncState[ctaId];
-    
-    // Mark this warp as arrived
-    state.arrivalMask |= (1 << currentWarpId);
-    
-    // Increment sync count
-    state.syncCount++;
-    
-    // Check if all warps in CTA have reached the synchronization point
-    if (checkCtaThreadsCompleted(ctaId)) {
-        // All threads have reached the synchronization point, continue execution
-        // Reset sync state
-        state.arrivalMask = 0;
-        state.syncCount = 0;
-        
-        return true;
-    }
-    
-    // Not all threads have arrived yet, return false
-    return false;
+    return pImpl->syncThreadsInCta(ctaId, syncPC);
 }
 
 // Grid-level synchronization
 bool WarpScheduler::syncThreadsInGrid(uint32_t gridId, size_t syncPC) {
-    // Get current warp
-    uint32_t currentWarpId = m_currentWarp;
-    
-    // Check if this is the first warp to reach the synchronization point
-    if (m_gridSyncState.find(gridId) == m_gridSyncState.end()) {
-        // Initialize sync state for this grid
-        SyncState state;
-        state.gridId = gridId;
-        state.syncPC = syncPC;
-        state.arrivalMask = 0;
-        state.syncCount = 0;
-        m_gridSyncState[gridId] = state;
-    }
-    
-    SyncState& state = m_gridSyncState[gridId];
-    
-    // Mark this warp as arrived
-    state.arrivalMask |= (1 << currentWarpId);
-    
-    // Increment sync count
-    state.syncCount++;
-    
-    // Check if all CTAs in grid have reached the synchronization point
-    if (checkGridCtasCompleted(gridId)) {
-        // All CTAs have reached the synchronization point, continue execution
-        // Reset sync state
-        state.arrivalMask = 0;
-        state.syncCount = 0;
-        
-        return true;
-    }
-    
-    // Not all CTAs have arrived yet, return false
-    return false;
+    return pImpl->syncThreadsInGrid(gridId, syncPC);
 }
 
 // Check if all threads in CTA have reached synchronization point
 bool WarpScheduler::checkCtaThreadsCompleted(uint32_t ctaId) {
-    // Implementation specific to CTA thread tracking
-    // This is a simplified implementation
-    if (m_syncState.find(ctaId) == m_syncState.end()) {
-        return false;
-    }
-    
-    const SyncState& state = m_syncState[ctaId];
-    
-    // For simplicity, we assume all threads complete when all warps have synced
-    // In a real implementation, this would check the actual number of warps
-    // in the CTA against the sync count
-    return state.syncCount >= WARPS_PER_CTA;
+    return pImpl->checkCtaThreadsCompleted(ctaId);
 }
 
 // Check if all CTAs in grid have reached synchronization point
 bool WarpScheduler::checkGridCtasCompleted(uint32_t gridId) {
-    // Implementation specific to grid CTA tracking
-    // This is a simplified implementation
-    if (m_gridSyncState.find(gridId) == m_gridSyncState.end()) {
-        return false;
-    }
-    
-    const SyncState& state = m_gridSyncState[gridId];
-    
-    // For simplicity, we assume all CTAs complete when all CTAs have synced
-    // In a real implementation, this would check the actual number of CTAs
-    // in the grid against the sync count
-    return state.syncCount >= CTAS_PER_GRID;
+    return pImpl->checkGridCtasCompleted(gridId);
 }
 
 // Implementation of Warp class methods

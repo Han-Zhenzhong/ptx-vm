@@ -99,8 +99,6 @@ private:
 class PTXExecutor {
 public:
     // Constructor/destructor
-    PTXExecutor();
-    PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubsystem);
     PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubsystem, PerformanceCounters& performanceCounters);
     ~PTXExecutor();
 
@@ -131,24 +129,16 @@ public:
     MemorySubsystem& getMemorySubsystem();
     
     // Get reference to warp scheduler
-    WarpScheduler& getWarpScheduler() {
-        return *m_warpScheduler;
-    }
+    WarpScheduler& getWarpScheduler();
     
     // Get reference to predicate handler
-    PredicateHandler& getPredicateHandler() {
-        return *m_predicateHandler;
-    }
+    PredicateHandler& getPredicateHandler();
     
     // Get reference to reconvergence mechanism
-    ReconvergenceMechanism& getReconvergenceMechanism() {
-        return *m_reconvergence;
-    }
+    ReconvergenceMechanism& getReconvergenceMechanism();
     
     // Get reference to instruction scheduler
-    InstructionScheduler& getInstructionScheduler() {
-        return m_instructionScheduler;
-    }
+    InstructionScheduler& getInstructionScheduler();
     
     // Get reference to performance counters
     PerformanceCounters& getPerformanceCounters();
@@ -157,31 +147,6 @@ private:
     // Private implementation details
     class Impl;
     std::unique_ptr<Impl> pImpl;
-    
-    // Direct pointers to core components for convenience
-    // These are also available through the Impl class
-    std::unique_ptr<WarpScheduler> m_warpScheduler;
-    std::unique_ptr<PredicateHandler> m_predicateHandler;
-    std::unique_ptr<ReconvergenceMechanism> m_reconvergence;
-    InstructionScheduler m_instructionScheduler;
-    
-    // Performance counters
-    PerformanceCounters& m_performanceCounters;
-    
-    // Current execution context
-    uint32_t m_currentCtaId = 0;
-    uint32_t m_currentGridId = 0;
-    
-    // Divergence handling
-    DivergenceStack m_divergenceStack;
-    size_t m_divergenceStartCycle = 0;
-    size_t m_numDivergences = 0;
-    DivergenceStats m_divergenceStats;
-    ReconvergenceAlgorithm m_reconvergenceAlgorithm = RECONVERGENCE_ALGORITHM_BASIC;
-    
-    // Control flow graph
-    ControlFlowGraph m_controlFlowGraph;
-    std::unordered_map<size_t, CFGNode*> m_pcToNode;
     
     // Synchronization support methods
     void handleSynchronization(const DecodedInstruction& instruction);

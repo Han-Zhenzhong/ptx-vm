@@ -321,6 +321,129 @@ public:
         return count;
     }
     
+    // Additional getters/setters for members moved from header
+    DivergenceStack& getDivergenceStackStd() {
+        return m_divergenceStackStd;
+    }
+    
+    const DivergenceStack& getDivergenceStackStd(uint32_t warpId) const {
+        // For now, we only support single warp
+        (void)warpId;
+        return m_divergenceStackStd;
+    }
+    
+    size_t getDivergenceStartCycle() const {
+        return m_divergenceStartCycle;
+    }
+    
+    void setDivergenceStartCycle(size_t cycle) {
+        m_divergenceStartCycle = cycle;
+    }
+    
+    void setControlFlowGraph(const std::vector<std::vector<size_t>>* cfg) {
+        m_controlFlowGraph = cfg;
+    }
+    
+    DivergenceStats& getStats() {
+        return m_stats;
+    }
+    
+    size_t getNumDivergences() const {
+        return m_numDivergences;
+    }
+    
+    void incrementNumDivergences() {
+        m_numDivergences++;
+    }
+    
+    ReconvergenceAlgorithm getAlgorithm() const {
+        return m_algorithm;
+    }
+    
+    void setAlgorithm(ReconvergenceAlgorithm algo) {
+        m_algorithm = algo;
+    }
+    
+    // Algorithm-specific reconvergence methods
+    void basicReconvergence(const DecodedInstruction& instruction, 
+                          size_t& nextPC, 
+                          uint64_t& activeMask,
+                          bool takeBranch,
+                          uint64_t threadMask) {
+        // Basic reconvergence implementation
+        (void)instruction;
+        (void)nextPC;
+        (void)activeMask;
+        (void)takeBranch;
+        (void)threadMask;
+        // Placeholder implementation
+    }
+    
+    void cfgBasedReconvergence(const DecodedInstruction& instruction, 
+                             size_t& nextPC, 
+                             uint64_t& activeMask,
+                             bool takeBranch,
+                             uint64_t threadMask) {
+        // CFG-based reconvergence implementation
+        (void)instruction;
+        (void)nextPC;
+        (void)activeMask;
+        (void)takeBranch;
+        (void)threadMask;
+        // Placeholder implementation
+    }
+    
+    void stackBasedReconvergence(const DecodedInstruction& instruction, 
+                               size_t& nextPC, 
+                               uint64_t& activeMask,
+                               bool takeBranch,
+                               uint64_t threadMask) {
+        // Stack-based reconvergence implementation
+        (void)instruction;
+        (void)nextPC;
+        (void)activeMask;
+        (void)takeBranch;
+        (void)threadMask;
+        // Placeholder implementation
+    }
+    
+    size_t findCFGReconvergencePoint(const DecodedInstruction& instruction) {
+        // Find reconvergence point using CFG
+        (void)instruction;
+        return 0; // Placeholder
+    }
+    
+    void updateDivergenceStats(bool takeBranch) {
+        // Update divergence statistics
+        (void)takeBranch;
+        m_numDivergences++;
+    }
+    
+    void updateReconvergenceStats(size_t divergenceCycles) {
+        // Update reconvergence statistics
+        (void)divergenceCycles;
+    }
+    
+    void handleDivergenceReconvergence(const DecodedInstruction& instruction, 
+                                      size_t& currentPC, 
+                                      uint64_t& activeMask) {
+        // Handle divergence and reconvergence
+        (void)instruction;
+        (void)currentPC;
+        (void)activeMask;
+    }
+    
+    void handleSIMTDivergence(const DecodedInstruction& instruction, 
+                             size_t& currentPC, 
+                             uint64_t& activeMask,
+                             uint64_t threadMask) {
+        // Handle SIMT divergence
+        (void)instruction;
+        (void)currentPC;
+        (void)activeMask;
+        (void)threadMask;
+    }
+    
 private:
     // Constants
     static const size_t MAX_PREDICATES = 8;  // Maximum predicates supported
@@ -335,9 +458,17 @@ private:
     uint64_t m_activeMask;           // Which threads are currently active
     uint64_t m_predicateActiveMask;  // Active mask when entering predicate block
     
-    // Divergence stack for SIMT execution
+    // Divergence stack for SIMT execution (array-based)
     DivergenceStackEntry m_divergenceStack[RECONVERGENCE_STACK_SIZE];
     size_t m_divergenceStackTop;
+    
+    // Additional members moved from header
+    DivergenceStack m_divergenceStackStd;  // std::stack version
+    size_t m_divergenceStartCycle = 0;
+    std::vector<std::vector<size_t>> const* m_controlFlowGraph = nullptr;
+    DivergenceStats m_stats;
+    size_t m_numDivergences = 0;
+    ReconvergenceAlgorithm m_algorithm = RECONVERGENCE_ALGORITHM_BASIC;
 };
 
 PredicateHandler::PredicateHandler() : pImpl(std::make_unique<Impl>()) {}
@@ -402,6 +533,63 @@ void PredicateHandler::updateAfterSync(uint64_t activeMask) {
 
 uint32_t PredicateHandler::getActiveThreadCount() const {
     return pImpl->getActiveThreadCount();
+}
+
+const DivergenceStack& PredicateHandler::getDivergenceStack(uint32_t warpId) const {
+    return pImpl->getDivergenceStackStd(warpId);
+}
+
+void PredicateHandler::setControlFlowGraph(const std::vector<std::vector<size_t>>& cfg) {
+    pImpl->setControlFlowGraph(&cfg);
+}
+
+void PredicateHandler::handleDivergenceReconvergence(const DecodedInstruction& instruction, 
+                                                     size_t& currentPC, 
+                                                     uint64_t& activeMask) {
+    pImpl->handleDivergenceReconvergence(instruction, currentPC, activeMask);
+}
+
+void PredicateHandler::handleSIMTDivergence(const DecodedInstruction& instruction, 
+                                           size_t& currentPC, 
+                                           uint64_t& activeMask,
+                                           uint64_t threadMask) {
+    pImpl->handleSIMTDivergence(instruction, currentPC, activeMask, threadMask);
+}
+
+void PredicateHandler::basicReconvergence(const DecodedInstruction& instruction, 
+                                         size_t& nextPC, 
+                                         uint64_t& activeMask,
+                                         bool takeBranch,
+                                         uint64_t threadMask) {
+    pImpl->basicReconvergence(instruction, nextPC, activeMask, takeBranch, threadMask);
+}
+
+void PredicateHandler::cfgBasedReconvergence(const DecodedInstruction& instruction, 
+                                            size_t& nextPC, 
+                                            uint64_t& activeMask,
+                                            bool takeBranch,
+                                            uint64_t threadMask) {
+    pImpl->cfgBasedReconvergence(instruction, nextPC, activeMask, takeBranch, threadMask);
+}
+
+void PredicateHandler::stackBasedReconvergence(const DecodedInstruction& instruction, 
+                                              size_t& nextPC, 
+                                              uint64_t& activeMask,
+                                              bool takeBranch,
+                                              uint64_t threadMask) {
+    pImpl->stackBasedReconvergence(instruction, nextPC, activeMask, takeBranch, threadMask);
+}
+
+size_t PredicateHandler::findCFGReconvergencePoint(const DecodedInstruction& instruction) {
+    return pImpl->findCFGReconvergencePoint(instruction);
+}
+
+void PredicateHandler::updateDivergenceStats(bool takeBranch) {
+    pImpl->updateDivergenceStats(takeBranch);
+}
+
+void PredicateHandler::updateReconvergenceStats(size_t divergenceCycles) {
+    pImpl->updateReconvergenceStats(divergenceCycles);
 }
 
 // Factory functions

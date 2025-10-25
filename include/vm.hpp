@@ -14,13 +14,6 @@
 
 // Forward declarations to avoid circular includes
 typedef uint64_t CUdeviceptr;
-struct KernelLaunchParams;
-
-// Explicitly define the deleter for MemorySubsystem since we're using Pimpl
-// This prevents the compiler from trying to generate a default deleter which requires complete type
-struct MemorySubsystemDeleter {
-    void operator()(::MemorySubsystem* ptr) const;
-};
 
 // Structure to hold kernel launch parameters
 struct KernelLaunchParams {
@@ -86,34 +79,22 @@ public:
     const std::map<CUdeviceptr, size_t>& getMemoryAllocations() const;
 
     // Get reference to the register bank
-    RegisterBank& getRegisterBank() {
-        return *m_registerBank;
-    }
+    RegisterBank& getRegisterBank();
 
     // Get reference to the memory subsystem
-    ::MemorySubsystem& getMemorySubsystem() {
-        return *m_memorySubsystem;
-    }
+    ::MemorySubsystem& getMemorySubsystem();
     
     // Get reference to the executor
-    PTXExecutor& getExecutor() {
-        return *m_executor;
-    }
+    PTXExecutor& getExecutor();
     
     // Get reference to performance counters
-    PerformanceCounters& getPerformanceCounters() {
-        return *m_performanceCounters;
-    }
+    PerformanceCounters& getPerformanceCounters();
     
     // Get reference to debugger
-    Debugger& getDebugger() {
-        return *m_debugger;
-    }
+    Debugger& getDebugger();
     
     // Get reference to register allocator
-    RegisterAllocator& getRegisterAllocator() {
-        return *m_registerAllocator;
-    }
+    RegisterAllocator& getRegisterAllocator();
     
     // Visualization methods
     void visualizeWarps();
@@ -144,30 +125,8 @@ private:
     class Impl;
     std::unique_ptr<Impl> pImpl;
     
-    // Core components
-    std::unique_ptr<RegisterBank> m_registerBank;  // Register management system
-    std::unique_ptr<::MemorySubsystem, MemorySubsystemDeleter> m_memorySubsystem;  // Memory subsystem
-    std::unique_ptr<PTXExecutor> m_executor;  // Execution engine
-    std::unique_ptr<PerformanceCounters> m_performanceCounters;  // Performance counters
-    std::unique_ptr<Debugger> m_debugger;  // Debugger
-    std::unique_ptr<RegisterAllocator> m_registerAllocator;  // Register allocator
-    
-    // Kernel execution state
-    std::string m_currentKernelName;
-    KernelLaunchParams m_kernelLaunchParams;
-    std::vector<KernelParameter> m_kernelParameters;
-    
-    // Memory management
-    std::map<CUdeviceptr, size_t> m_memoryAllocations;
-    CUdeviceptr m_nextMemoryAddress;
-    
     // Parameter memory space (special area for kernel parameters)
     static const CUdeviceptr PARAMETER_MEMORY_BASE = 0x1000;
-    size_t m_parameterMemoryOffset;
-    
-    // Profiling support
-    std::ofstream m_profileOutputStream;
-    std::string m_profileOutputFile;
     
     // Helper function to get current time as string
     std::string getCurrentTime();

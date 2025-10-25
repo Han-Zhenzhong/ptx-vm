@@ -220,7 +220,6 @@ public:
         return result;
     }
     
-private:
     // Execute LD for a specific memory space
     bool executeLDMemorySpace(const DecodedInstruction& instr, MemorySpace space) {
         if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 1 ||
@@ -1030,13 +1029,13 @@ private:
         // For each instruction, track where branches go and where they come from
         // This information helps with divergence analysis
         
-        // Clear any existing data
-        m_controlFlowGraph.clear();
+        // Clear any existing data (use the std::vector backing store)
+        m_controlFlowGraphData.clear();
         
         // Initialize structures
-        m_controlFlowGraph.resize(instructions.size());
+        m_controlFlowGraphData.resize(instructions.size());
         
-        // Build basic control flow graph
+        // Build basic control flow graph into m_controlFlowGraphData
         for (size_t i = 0; i < instructions.size(); ++i) {
             const DecodedInstruction& instr = instructions[i];
             
@@ -1050,12 +1049,12 @@ private:
                     
                     // Add edge from current instruction to target
                     if (targetPC < instructions.size()) {
-                        m_controlFlowGraph[i].push_back(targetPC);
+                        m_controlFlowGraphData[i].push_back(targetPC);
                     }
                     
                     // Also add edge to next instruction (fall-through)
                     if (i + 1 < instructions.size()) {
-                        m_controlFlowGraph[i].push_back(i + 1);
+                        m_controlFlowGraphData[i].push_back(i + 1);
                     }
                 }
             } else if (instr.type == InstructionTypes::RET) {
@@ -1063,12 +1062,83 @@ private:
             } else {
                 // Normal instruction - sequential flow
                 if (i + 1 < instructions.size()) {
-                    m_controlFlowGraph[i].push_back(i + 1);
+                    m_controlFlowGraphData[i].push_back(i + 1);
                 }
             }
         }
         
+        // Note: If ControlFlowGraph needs to be constructed from this data,
+        // add a conversion step here once the ControlFlowGraph API is known.
         return true;
+    }
+    
+    // Getter methods for components
+    PredicateHandler& getPredicateHandler() {
+        return *m_predicateHandler;
+    }
+    
+    ReconvergenceMechanism& getReconvergenceMechanism() {
+        return *m_reconvergence;
+    }
+    
+    InstructionScheduler& getInstructionScheduler() {
+        return m_instructionScheduler;
+    }
+    
+    uint32_t getCurrentCtaId() const {
+        return m_currentCtaId;
+    }
+    
+    uint32_t getCurrentGridId() const {
+        return m_currentGridId;
+    }
+    
+    void setCurrentCtaId(uint32_t id) {
+        m_currentCtaId = id;
+    }
+    
+    void setCurrentGridId(uint32_t id) {
+        m_currentGridId = id;
+    }
+    
+    DivergenceStack& getDivergenceStack() {
+        return m_divergenceStack;
+    }
+    
+    size_t getDivergenceStartCycle() const {
+        return m_divergenceStartCycle;
+    }
+    
+    void setDivergenceStartCycle(size_t cycle) {
+        m_divergenceStartCycle = cycle;
+    }
+    
+    size_t getNumDivergences() const {
+        return m_numDivergences;
+    }
+    
+    void incrementNumDivergences() {
+        m_numDivergences++;
+    }
+    
+    DivergenceStats& getDivergenceStats() {
+        return m_divergenceStats;
+    }
+    
+    ReconvergenceAlgorithm getReconvergenceAlgorithm() const {
+        return m_reconvergenceAlgorithm;
+    }
+    
+    void setReconvergenceAlgorithm(ReconvergenceAlgorithm algo) {
+        m_reconvergenceAlgorithm = algo;
+    }
+    
+    ControlFlowGraph& getControlFlowGraph() {
+        return m_controlFlowGraph;
+    }
+    
+    std::unordered_map<size_t, CFGNode*>& getPcToNode() {
+        return m_pcToNode;
     }
     
     // Core components
@@ -1088,21 +1158,25 @@ private:
     // Execution engine components
     std::unique_ptr<WarpScheduler> m_warpScheduler;
     std::unique_ptr<PredicateHandler> m_predicateHandler;
-    std::unique_ptr<ReconvergenceMechanism> m_reconvergence;  // Reconvergence mechanism
+    std::unique_ptr<ReconvergenceMechanism> m_reconvergence;
+    InstructionScheduler m_instructionScheduler;
+    
+    // Current execution context
+    uint32_t m_currentCtaId = 0;
+    uint32_t m_currentGridId = 0;
+    
+    // Divergence handling
+    DivergenceStack m_divergenceStack;
+    size_t m_divergenceStartCycle = 0;
+    size_t m_numDivergences = 0;
+    DivergenceStats m_divergenceStats;
+    ReconvergenceAlgorithm m_reconvergenceAlgorithm = RECONVERGENCE_ALGORITHM_BASIC;
     
     // Control flow graph
-    std::vector<std::vector<size_t>> m_controlFlowGraph;
+    ControlFlowGraph m_controlFlowGraph;
+    std::unordered_map<size_t, CFGNode*> m_pcToNode;
+    std::vector<std::vector<size_t>> m_controlFlowGraphData;
 };
-
-PTXExecutor::PTXExecutor() : pImpl(std::make_unique<Impl>()), 
-                             m_performanceCounters(pImpl->getPerformanceCounters()) {}
-
-PTXExecutor::PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubsystem) 
-    : pImpl(std::make_unique<Impl>()), 
-      m_performanceCounters(pImpl->getPerformanceCounters()) {
-    // Override the default register bank and memory subsystem with the provided ones
-    pImpl->setComponents(registerBank, memorySubsystem);
-}
 
 PTXExecutor::PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubsystem, PerformanceCounters& performanceCounters) 
     : pImpl(std::make_unique<Impl>()), 
@@ -1160,4 +1234,20 @@ bool PTXExecutor::executeSingleInstruction() {
 
 size_t PTXExecutor::getCurrentInstructionIndex() const {
     return pImpl->getCurrentInstructionIndex();
+}
+
+WarpScheduler& PTXExecutor::getWarpScheduler() {
+    return pImpl->getWarpScheduler();
+}
+
+PredicateHandler& PTXExecutor::getPredicateHandler() {
+    return pImpl->getPredicateHandler();
+}
+
+ReconvergenceMechanism& PTXExecutor::getReconvergenceMechanism() {
+    return pImpl->getReconvergenceMechanism();
+}
+
+InstructionScheduler& PTXExecutor::getInstructionScheduler() {
+    return pImpl->getInstructionScheduler();
 }

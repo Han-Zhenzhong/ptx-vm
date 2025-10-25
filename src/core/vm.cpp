@@ -4,6 +4,12 @@
 #include <iostream>
 #include "memory/memory.hpp"  // Include full definition here
 
+// Explicitly define the deleter for MemorySubsystem since we're using Pimpl
+// This prevents the compiler from trying to generate a default deleter which requires complete type
+struct MemorySubsystemDeleter {
+    void operator()(::MemorySubsystem* ptr) const;
+};
+
 // Implement the deleter for MemorySubsystem
 void MemorySubsystemDeleter::operator()(::MemorySubsystem* ptr) const {
     delete ptr;
@@ -12,9 +18,14 @@ void MemorySubsystemDeleter::operator()(::MemorySubsystem* ptr) const {
 // Private implementation class
 class PTXVM::Impl {
 public:
-    Impl() : m_registerBank(nullptr), m_memorySubsystem(nullptr), 
-             m_executor(nullptr), m_performanceCounters(nullptr),
-             m_debugger(nullptr), m_registerAllocator(nullptr) {}
+    Impl() : m_registerBank(std::make_unique<RegisterBank>()),
+             m_memorySubsystem(new ::MemorySubsystem(), MemorySubsystemDeleter()),
+             m_performanceCounters(std::make_unique<PerformanceCounters>()),
+             m_currentKernelName(""),
+             m_nextMemoryAddress(0x10000), // Start allocating at 64KB
+             m_parameterMemoryOffset(0),
+             isInitialized(false),
+             m_isProgramLoaded(false) {}
     
     ~Impl() = default;
 
@@ -26,40 +37,67 @@ public:
     std::unique_ptr<Debugger> m_debugger;
     std::unique_ptr<RegisterAllocator> m_registerAllocator;
     
+    // Kernel execution state
+    std::string m_currentKernelName;
+    KernelLaunchParams m_kernelLaunchParams;
+    std::vector<KernelParameter> m_kernelParameters;
+    
+    // Memory management
+    std::map<CUdeviceptr, size_t> m_memoryAllocations;
+    CUdeviceptr m_nextMemoryAddress;
+    
+    // Parameter memory space
+    size_t m_parameterMemoryOffset;
+    
+    // Profiling support
+    std::ofstream m_profileOutputStream;
+    std::string m_profileOutputFile;
+    
     // Initialization state
-    bool isInitialized = false;
-    bool m_isProgramLoaded = false;
+    bool isInitialized;
+    bool m_isProgramLoaded;
     std::string m_programFilename;
+    
+    // Getter methods
+    RegisterBank& getRegisterBank() {
+        return *m_registerBank;
+    }
+    
+    ::MemorySubsystem& getMemorySubsystem() {
+        return *m_memorySubsystem;
+    }
+    
+    PTXExecutor& getExecutor() {
+        return *m_executor;
+    }
+    
+    PerformanceCounters& getPerformanceCounters() {
+        return *m_performanceCounters;
+    }
+    
+    Debugger& getDebugger() {
+        return *m_debugger;
+    }
+    
+    RegisterAllocator& getRegisterAllocator() {
+        return *m_registerAllocator;
+    }
 };
 
-PTXVM::PTXVM() : pImpl(std::make_unique<Impl>()),
-                 m_registerBank(std::make_unique<RegisterBank>()),
-                 m_memorySubsystem(nullptr, MemorySubsystemDeleter()), // Will be initialized in initialize()
-                 m_executor(nullptr), // Will be initialized in initialize()
-                 m_performanceCounters(std::make_unique<PerformanceCounters>()),
-                 m_debugger(nullptr), // Will be initialized in initialize()
-                 m_registerAllocator(nullptr), // Will be initialized in initialize()
-                 m_currentKernelName(""),
-                 m_nextMemoryAddress(0x10000), // Start allocating at 64KB
-                 m_parameterMemoryOffset(0) {
-    // Initialize memory subsystem
-    m_memorySubsystem = std::unique_ptr<::MemorySubsystem, MemorySubsystemDeleter>(
-        new ::MemorySubsystem()
-    );
-}
+PTXVM::PTXVM() : pImpl(std::make_unique<Impl>()) {}
 
 PTXVM::~PTXVM() = default;
 
 void PTXVM::setKernelName(const std::string& name) {
-    m_currentKernelName = name;
+    pImpl->m_currentKernelName = name;
 }
 
 void PTXVM::setKernelLaunchParams(const KernelLaunchParams& params) {
-    m_kernelLaunchParams = params;
+    pImpl->m_kernelLaunchParams = params;
 }
 
 void PTXVM::setKernelParameters(const std::vector<KernelParameter>& parameters) {
-    m_kernelParameters = parameters;
+    pImpl->m_kernelParameters = parameters;
 }
 
 bool PTXVM::setupKernelParameters() {
@@ -71,14 +109,14 @@ bool PTXVM::setupKernelParameters() {
     
     CUdeviceptr paramBaseAddr = PARAMETER_MEMORY_BASE;
     
-    for (size_t i = 0; i < m_kernelParameters.size(); ++i) {
-        const auto& param = m_kernelParameters[i];
+    for (size_t i = 0; i < pImpl->m_kernelParameters.size(); ++i) {
+        const auto& param = pImpl->m_kernelParameters[i];
         
         // Copy parameter data from device memory to parameter memory space
         try {
             for (size_t j = 0; j < param.size; ++j) {
-                uint8_t value = m_memorySubsystem->read<uint8_t>(MemorySpace::GLOBAL, param.devicePtr + j);
-                m_memorySubsystem->write<uint8_t>(MemorySpace::GLOBAL, paramBaseAddr + param.offset + j, value);
+                uint8_t value = pImpl->m_memorySubsystem->read<uint8_t>(MemorySpace::GLOBAL, param.devicePtr + j);
+                pImpl->m_memorySubsystem->write<uint8_t>(MemorySpace::GLOBAL, paramBaseAddr + param.offset + j, value);
             }
         } catch (...) {
             std::cerr << "Failed to copy parameter " << i << " to parameter memory space" << std::endl;
@@ -89,7 +127,7 @@ bool PTXVM::setupKernelParameters() {
     // Map parameters to registers for direct access
     mapKernelParametersToRegisters();
     
-    std::cout << "Set up " << m_kernelParameters.size() << " kernel parameters in memory" << std::endl;
+    std::cout << "Set up " << pImpl->m_kernelParameters.size() << " kernel parameters in memory" << std::endl;
     return true;
 }
 
@@ -100,8 +138,8 @@ void PTXVM::mapKernelParametersToRegisters() {
     
     RegisterBank& registerBank = pImpl->m_executor->getRegisterBank();
     
-    for (size_t i = 0; i < m_kernelParameters.size() && i < 32; ++i) {
-        const auto& param = m_kernelParameters[i];
+    for (size_t i = 0; i < pImpl->m_kernelParameters.size() && i < 32; ++i) {
+        const auto& param = pImpl->m_kernelParameters[i];
         
         // For pointer parameters, store the pointer value in a register
         // For value parameters, we would need to read the value from parameter memory
@@ -111,21 +149,21 @@ void PTXVM::mapKernelParametersToRegisters() {
         registerBank.writeRegister(static_cast<uint32_t>(i), paramValue);
     }
     
-    std::cout << "Mapped " << m_kernelParameters.size() << " kernel parameters to registers" << std::endl;
+    std::cout << "Mapped " << pImpl->m_kernelParameters.size() << " kernel parameters to registers" << std::endl;
 }
 
 bool PTXVM::launchKernel() {
     // Set up execution context with kernel launch parameters
-    std::cout << "Launching kernel: " << m_currentKernelName << std::endl;
-    std::cout << "Grid dimensions: " << m_kernelLaunchParams.gridDimX << " x " 
-              << m_kernelLaunchParams.gridDimY << " x " << m_kernelLaunchParams.gridDimZ << std::endl;
-    std::cout << "Block dimensions: " << m_kernelLaunchParams.blockDimX << " x " 
-              << m_kernelLaunchParams.blockDimY << " x " << m_kernelLaunchParams.blockDimZ << std::endl;
-    std::cout << "Shared memory: " << m_kernelLaunchParams.sharedMemBytes << " bytes" << std::endl;
-    std::cout << "Parameters: " << m_kernelParameters.size() << " parameters" << std::endl;
+    std::cout << "Launching kernel: " << pImpl->m_currentKernelName << std::endl;
+    std::cout << "Grid dimensions: " << pImpl->m_kernelLaunchParams.gridDimX << " x " 
+              << pImpl->m_kernelLaunchParams.gridDimY << " x " << pImpl->m_kernelLaunchParams.gridDimZ << std::endl;
+    std::cout << "Block dimensions: " << pImpl->m_kernelLaunchParams.blockDimX << " x " 
+              << pImpl->m_kernelLaunchParams.blockDimY << " x " << pImpl->m_kernelLaunchParams.blockDimZ << std::endl;
+    std::cout << "Shared memory: " << pImpl->m_kernelLaunchParams.sharedMemBytes << " bytes" << std::endl;
+    std::cout << "Parameters: " << pImpl->m_kernelParameters.size() << " parameters" << std::endl;
     
     // Set up kernel parameters in VM memory
-    if (!m_kernelParameters.empty()) {
+    if (!pImpl->m_kernelParameters.empty()) {
         if (!setupKernelParameters()) {
             std::cerr << "Failed to set up kernel parameters" << std::endl;
             return false;
@@ -146,22 +184,20 @@ bool PTXVM::launchKernel() {
 
 bool PTXVM::initialize() {
     // Initialize the executor with register bank and memory subsystem
-    m_executor = std::make_unique<PTXExecutor>(*m_registerBank, *m_memorySubsystem, *m_performanceCounters);
+    pImpl->m_executor = std::make_unique<PTXExecutor>(*pImpl->m_registerBank, *pImpl->m_memorySubsystem, *pImpl->m_performanceCounters);
     
     // Initialize the debugger with the executor
-    m_debugger = std::make_unique<Debugger>(m_executor.get());
+    pImpl->m_debugger = std::make_unique<Debugger>(pImpl->m_executor.get());
     
     // Initialize the register allocator with this VM
-    m_registerAllocator = std::make_unique<RegisterAllocator>(this);
-    m_registerAllocator->initialize();
+    pImpl->m_registerAllocator = std::make_unique<RegisterAllocator>(this);
+    pImpl->m_registerAllocator->initialize();
     
     // Initialize the register allocator with default parameters
     // 16 physical registers, 1 warp, 32 threads per warp
-    if (!m_registerAllocator->allocateRegisters(16, 1, 32)) {
+    if (!pImpl->m_registerAllocator->allocateRegisters(16, 1, 32)) {
         return false;
     }
-
-    pImpl->m_executor = std::move(m_executor);
     
     return true;
 }
@@ -256,17 +292,17 @@ CUdeviceptr PTXVM::allocateMemory(size_t size) {
     // Align to 8-byte boundary
     size = (size + 7) & ~7;
     
-    CUdeviceptr address = m_nextMemoryAddress;
-    m_memoryAllocations[address] = size;
-    m_nextMemoryAddress += size;
+    CUdeviceptr address = pImpl->m_nextMemoryAddress;
+    pImpl->m_memoryAllocations[address] = size;
+    pImpl->m_nextMemoryAddress += size;
     
     return address;
 }
 
 bool PTXVM::freeMemory(CUdeviceptr ptr) {
-    auto it = m_memoryAllocations.find(ptr);
-    if (it != m_memoryAllocations.end()) {
-        m_memoryAllocations.erase(it);
+    auto it = pImpl->m_memoryAllocations.find(ptr);
+    if (it != pImpl->m_memoryAllocations.end()) {
+        pImpl->m_memoryAllocations.erase(it);
         return true;
     }
     return false;
@@ -278,7 +314,7 @@ bool PTXVM::copyMemoryHtoD(CUdeviceptr dst, const void* src, size_t size) {
     try {
         for (size_t i = 0; i < size; ++i) {
             const uint8_t* srcBytes = static_cast<const uint8_t*>(src);
-            m_memorySubsystem->write<uint8_t>(MemorySpace::GLOBAL, dst + i, srcBytes[i]);
+            pImpl->m_memorySubsystem->write<uint8_t>(MemorySpace::GLOBAL, dst + i, srcBytes[i]);
         }
         return true;
     } catch (...) {
@@ -291,7 +327,7 @@ bool PTXVM::copyMemoryDtoH(void* dst, CUdeviceptr src, size_t size) {
     
     try {
         for (size_t i = 0; i < size; ++i) {
-            uint8_t value = m_memorySubsystem->read<uint8_t>(MemorySpace::GLOBAL, src + i);
+            uint8_t value = pImpl->m_memorySubsystem->read<uint8_t>(MemorySpace::GLOBAL, src + i);
             uint8_t* dstBytes = static_cast<uint8_t*>(dst);
             dstBytes[i] = value;
         }
@@ -302,7 +338,7 @@ bool PTXVM::copyMemoryDtoH(void* dst, CUdeviceptr src, size_t size) {
 }
 
 const std::map<CUdeviceptr, size_t>& PTXVM::getMemoryAllocations() const {
-    return m_memoryAllocations;
+    return pImpl->m_memoryAllocations;
 }
 
 bool PTXVM::loadProgram(const std::string& filename) {
@@ -323,4 +359,28 @@ bool PTXVM::loadProgram(const std::string& filename) {
 
 bool PTXVM::isProgramLoaded() const {
     return pImpl->m_isProgramLoaded;
+}
+
+RegisterBank& PTXVM::getRegisterBank() {
+    return pImpl->getRegisterBank();
+}
+
+::MemorySubsystem& PTXVM::getMemorySubsystem() {
+    return pImpl->getMemorySubsystem();
+}
+
+PTXExecutor& PTXVM::getExecutor() {
+    return pImpl->getExecutor();
+}
+
+PerformanceCounters& PTXVM::getPerformanceCounters() {
+    return pImpl->getPerformanceCounters();
+}
+
+Debugger& PTXVM::getDebugger() {
+    return pImpl->getDebugger();
+}
+
+RegisterAllocator& PTXVM::getRegisterAllocator() {
+    return pImpl->getRegisterAllocator();
 }

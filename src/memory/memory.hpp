@@ -134,10 +134,10 @@ public:
     // Performance statistics
     size_t getTlbHits() const;
     size_t getTlbMisses() const;
-    size_t getPageFaults() const { return m_pageFaults; }
-    size_t getCacheHits() const { return m_cacheHits; }
-    size_t getCacheMisses() const { return m_cacheMisses; }
-    size_t getBankConflictsCount() const { return m_bankConflicts; }
+    size_t getPageFaults() const;
+    size_t getCacheHits() const;
+    size_t getCacheMisses() const;
+    size_t getBankConflictsCount() const;
     
     // Destructor
     ~MemorySubsystem();
@@ -146,14 +146,6 @@ private:
     // Private implementation details
     class Impl;
     std::unique_ptr<Impl> pImpl;
-
-    // Performance counters
-    mutable size_t m_tlbHits;
-    mutable size_t m_tlbMisses;
-    mutable size_t m_pageFaults;
-    mutable size_t m_cacheHits;
-    mutable size_t m_cacheMisses;
-    mutable size_t m_bankConflicts;
 };
 
 #endif // MEMORY_HPP

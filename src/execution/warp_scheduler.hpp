@@ -186,16 +186,9 @@ public:
     bool checkGridCtasCompleted(uint32_t gridId);
     
 private:
-    uint32_t m_numWarps;              // Number of warps in this scheduler
-    uint32_t m_threadsPerWarp;        // Number of threads per warp
-    uint32_t m_currentWarp;           // Currently executing warp
     // Private implementation details
     class Impl;
     std::unique_ptr<Impl> pImpl;
-
-    // Synchronization state
-    std::unordered_map<uint32_t, SyncState> m_syncState;
-    std::unordered_map<uint32_t, SyncState> m_gridSyncState;
 };
 
 #endif // WARP_SCHEDULER_HPP

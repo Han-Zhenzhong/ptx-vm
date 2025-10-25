@@ -112,21 +112,7 @@ private:
     class Impl;
     std::unique_ptr<Impl> pImpl;
     
-    // Divergence handling
-    DivergenceStack m_divergenceStack;  // Stack to track divergence points
-    size_t m_divergenceStartCycle;      // Cycle when divergence started
-    
-    // Control flow graph for CFG-based reconvergence
-    std::vector<std::vector<size_t>>* m_controlFlowGraph = nullptr;
-    
-    // Divergence statistics
-    DivergenceStats stats;
-    size_t m_numDivergences = 0;
-    
-    // Current algorithm
-    ReconvergenceAlgorithm m_algorithm = RECONVERGENCE_ALGORITHM_BASIC;
-    
-    // Algorithm-specific implementations
+    // Algorithm-specific implementations (moved to Impl but kept as forwarding methods)
     void basicReconvergence(const DecodedInstruction& instruction, 
                           size_t& nextPC, 
                           uint64_t& activeMask,

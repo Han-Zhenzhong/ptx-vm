@@ -57,13 +57,22 @@ public:
     TLBConfig tlbConfig;
     PageFaultHandler pageFaultHandler;
     
-    // TLB statistics
-    size_t tlbHits = 0;
-    size_t tlbMisses = 0;
-    size_t pageFaults = 0;
-    
     // Page size (4KB by default)
     static const uint64_t PAGE_SIZE = 4096;
+    
+    // Cache configuration
+    CacheConfig cacheConfig;
+    
+    // Shared memory configuration
+    SharedMemoryConfig sharedMemoryConfig;
+    
+    // Performance counters (moved from header)
+    mutable size_t m_tlbHits_impl = 0;
+    mutable size_t m_tlbMisses_impl = 0;
+    mutable size_t m_pageFaults_impl = 0;
+    mutable size_t m_cacheHits_impl = 0;
+    mutable size_t m_cacheMisses_impl = 0;
+    mutable size_t m_bankConflicts_impl = 0;
     
     // Private methods for TLB and virtual memory
     bool lookupTlb(uint64_t virtualPage, uint64_t& physicalPage) {
@@ -310,13 +319,13 @@ bool MemorySubsystem::translateAddress(uint64_t virtualAddress, uint64_t& physic
     // Try TLB lookup first
     if (pImpl->lookupTlb(virtualPage, physicalPage)) {
         // TLB hit
-        pImpl->tlbHits++;
+        pImpl->m_tlbHits_impl++;
         physicalAddress = (physicalPage * pImpl->tlbConfig.pageSize) + pageOffset;
         return true;
     }
     
     // TLB miss
-    pImpl->tlbMisses++;
+    pImpl->m_tlbMisses_impl++;
     
     // Check page table
     auto it = pImpl->pageTable.find(virtualPage);
@@ -332,7 +341,7 @@ bool MemorySubsystem::translateAddress(uint64_t virtualAddress, uint64_t& physic
     }
     
     // Page fault
-    pImpl->pageFaults++;
+    pImpl->m_pageFaults_impl++;
     
     // Call page fault handler if set
     if (pImpl->pageFaultHandler) {
@@ -349,11 +358,11 @@ void MemorySubsystem::flushTlb() {
 }
 
 size_t MemorySubsystem::getTlbHits() const {
-    return pImpl->tlbHits;
+    return pImpl->m_tlbHits_impl;
 }
 
 size_t MemorySubsystem::getTlbMisses() const {
-    return pImpl->tlbMisses;
+    return pImpl->m_tlbMisses_impl;
 }
 
 // Page fault handling
@@ -362,7 +371,7 @@ void MemorySubsystem::setPageFaultHandler(const PageFaultHandler& handler) {
 }
 
 void MemorySubsystem::handlePageFault(uint64_t virtualAddress) {
-    pImpl->pageFaults++;
+    pImpl->m_pageFaults_impl++;
     
     // Call page fault handler if set
     if (pImpl->pageFaultHandler) {
@@ -381,7 +390,7 @@ MemoryAccessResult MemorySubsystem::accessMemory(uint64_t virtualAddress, Memory
     if (translateAddress(virtualAddress, physicalAddress)) {
         result.success = true;
         result.physicalAddress = physicalAddress;
-        result.tlbHit = (pImpl->tlbMisses > 0); // Simplified check
+        result.tlbHit = (pImpl->m_tlbMisses_impl > 0); // Simplified check
         return pImpl->performPhysicalAccess(physicalAddress, flags);
     } else {
         result.success = false;
@@ -404,4 +413,56 @@ void MemorySubsystem::mapPage(uint64_t virtualPage, uint64_t physicalPage) {
 
 void MemorySubsystem::unmapPage(uint64_t virtualPage) {
     pImpl->pageTable.erase(virtualPage);
+}
+
+// Cache operations
+void MemorySubsystem::configureCache(const CacheConfig& config) {
+    pImpl->cacheConfig = config;
+}
+
+void MemorySubsystem::configureSharedMemory(const SharedMemoryConfig& config) {
+    pImpl->sharedMemoryConfig = config;
+}
+
+// Shared memory operations
+size_t MemorySubsystem::getBankConflicts(const std::vector<uint64_t>& addresses) {
+    if (pImpl->sharedMemoryConfig.bankCount == 0) {
+        return 0;
+    }
+    
+    // Count bank conflicts
+    std::unordered_map<size_t, size_t> bankAccess;
+    size_t conflicts = 0;
+    
+    for (uint64_t addr : addresses) {
+        size_t bank = (addr / pImpl->sharedMemoryConfig.bankWidth) % pImpl->sharedMemoryConfig.bankCount;
+        bankAccess[bank]++;
+    }
+    
+    // Count conflicts (accesses beyond the first to each bank)
+    for (const auto& entry : bankAccess) {
+        if (entry.second > 1) {
+            conflicts += (entry.second - 1);
+        }
+    }
+    
+    pImpl->m_bankConflicts_impl += conflicts;
+    return conflicts;
+}
+
+// Performance statistics getters
+size_t MemorySubsystem::getPageFaults() const {
+    return pImpl->m_pageFaults_impl;
+}
+
+size_t MemorySubsystem::getCacheHits() const {
+    return pImpl->m_cacheHits_impl;
+}
+
+size_t MemorySubsystem::getCacheMisses() const {
+    return pImpl->m_cacheMisses_impl;
+}
+
+size_t MemorySubsystem::getBankConflictsCount() const {
+    return pImpl->m_bankConflicts_impl;
 }
