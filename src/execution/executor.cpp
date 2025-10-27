@@ -2,6 +2,8 @@
 #include <stdexcept>
 #include <iostream>
 #include <sstream>
+#include <cmath>
+#include <algorithm>
 #include "performance_counters.hpp"
 #include "warp_scheduler.hpp"  // Warp scheduler header
 #include "predicate_handler.hpp"  // Predicate handler header
@@ -365,6 +367,49 @@ public:
                 return executeMEMBAR(instr);
             case InstructionTypes::BARRIER:
                 return executeBARRIER(instr);
+            
+            // Floating-point instructions
+            case InstructionTypes::ADD_F32:
+                return executeADD_F32(instr);
+            case InstructionTypes::SUB_F32:
+                return executeSUB_F32(instr);
+            case InstructionTypes::MUL_F32:
+                return executeMUL_F32(instr);
+            case InstructionTypes::DIV_F32:
+                return executeDIV_F32(instr);
+            case InstructionTypes::FMA_F32:
+                return executeFMA_F32(instr);
+            case InstructionTypes::SQRT_F32:
+                return executeSQRT_F32(instr);
+            case InstructionTypes::NEG_F32:
+                return executeNEG_F32(instr);
+            case InstructionTypes::ABS_F32:
+                return executeABS_F32(instr);
+            
+            // Comparison and selection instructions
+            case InstructionTypes::SETP:
+                return executeSETP(instr);
+            case InstructionTypes::SELP:
+                return executeSELP(instr);
+            
+            // Type conversion instructions
+            case InstructionTypes::CVT:
+                return executeCVT(instr);
+            
+            // Atomic operations
+            case InstructionTypes::ATOM_ADD:
+                return executeATOM_ADD(instr);
+            case InstructionTypes::ATOM_SUB:
+                return executeATOM_SUB(instr);
+            case InstructionTypes::ATOM_EXCH:
+                return executeATOM_EXCH(instr);
+            case InstructionTypes::ATOM_CAS:
+                return executeATOM_CAS(instr);
+            case InstructionTypes::ATOM_MIN:
+                return executeATOM_MIN(instr);
+            case InstructionTypes::ATOM_MAX:
+                return executeATOM_MAX(instr);
+            
             default:
                 std::cerr << "Unsupported instruction type: " << static_cast<int>(instr.type) << std::endl;
                 m_currentInstructionIndex++;
@@ -515,12 +560,17 @@ public:
         return true;
     }
     bool executeCALL(const DecodedInstruction& instr) {
-        // 这里只做简单跳转，实际应保存返回地址
-        if (instr.sources.size() != 1) {
+        // CALL instruction: call function_name, (arg1, arg2, ...)
+        // For now, we'll use a simplified approach
+        // In PTX, call format is: call (retval), function_name, (args);
+        
+        if (instr.sources.size() < 1) {
             std::cerr << "Invalid CALL instruction format" << std::endl;
             m_currentInstructionIndex++;
             return true;
         }
+        
+        // Get target address/label
         size_t target = 0;
         if (instr.sources[0].type == OperandType::IMMEDIATE) {
             target = static_cast<size_t>(instr.sources[0].immediateValue);
@@ -531,7 +581,27 @@ public:
             m_currentInstructionIndex++;
             return true;
         }
-        // TODO: 保存返回地址
+        
+        // If we have program structure, try to resolve function by address
+        if (m_hasProgramStructure) {
+            // Find function that contains this target address
+            for (const auto& func : m_program.functions) {
+                if (target >= func.startInstructionIndex && target <= func.endInstructionIndex) {
+                    // Found the function - use proper call mechanism
+                    std::vector<uint64_t> args;
+                    // TODO: Extract arguments from instruction or registers
+                    return callFunction(func.name, args);
+                }
+            }
+        }
+        
+        // Fallback: simple jump with return address save
+        // Create a minimal call frame
+        CallFrame frame;
+        frame.functionName = "<unknown>";
+        frame.returnAddress = m_currentInstructionIndex + 1;
+        m_callStack.push_back(frame);
+        
         m_currentInstructionIndex = target;
         return true;
     }
@@ -814,11 +884,10 @@ public:
         return true;
     }
     
-    // Execute EXIT instruction
+    // Execute EXIT/RET instruction
     bool executeEXIT(const DecodedInstruction& instr) {
-        // Just mark execution as complete
-        m_executionComplete = true;
-        return true;
+        // RET instruction returns from current function
+        return returnFromFunction();
     }
     
     // Execute NOP instruction
@@ -835,26 +904,35 @@ public:
             impl.m_currentInstructionIndex++;
             return true;
         }
-        // Get the source operand (parameter memory address)
+        
+        // Get the parameter offset or name
+        uint64_t paramValue = 0;
+        
+        // Try to resolve parameter by name if we have program structure
+        // For now, we use offset-based access
         uint64_t paramOffset = 0;
         if (instr.sources[0].type == OperandType::IMMEDIATE) {
             paramOffset = static_cast<uint64_t>(instr.sources[0].immediateValue);
         } else if (instr.sources[0].type == OperandType::REGISTER) {
             paramOffset = impl.m_registerBank->readRegister(instr.sources[0].registerIndex);
         } else if (instr.sources[0].type == OperandType::MEMORY) {
-            // [result_ptr] 这种情况，直接用偏移0（或可扩展符号表）
+            // [param_name] - use offset 0 or try to resolve from symbol table
             paramOffset = 0;
         } else {
             std::cerr << "Invalid source operand type for LD_PARAM" << std::endl;
             impl.m_currentInstructionIndex++;
             return true;
         }
+        
         // Calculate the actual parameter memory address
         uint64_t paramAddress = 0x1000 + paramOffset;  // PARAMETER_MEMORY_BASE = 0x1000
+        
         // Read from parameter memory
-        uint64_t value = impl.m_memorySubsystem->read<uint64_t>(MemorySpace::GLOBAL, paramAddress);
+        paramValue = impl.m_memorySubsystem->read<uint64_t>(MemorySpace::GLOBAL, paramAddress);
+        
         // Store result in destination register
-        impl.storeRegisterValue(instr.dest.registerIndex, value);
+        impl.storeRegisterValue(instr.dest.registerIndex, paramValue);
+        
         // Move to next instruction
         impl.m_currentInstructionIndex++;
         return true;
@@ -900,6 +978,691 @@ public:
         
         // Move to next instruction
         impl.m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // ===== Floating-Point Instruction Execution =====
+    
+    // Execute ADD.F32 instruction
+    bool executeADD_F32(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 2) {
+            std::cerr << "Invalid ADD.F32 instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // Read source operands (float registers)
+        float src1 = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+        float src2 = (instr.sources[1].type == OperandType::IMMEDIATE) 
+                     ? *reinterpret_cast<const float*>(&instr.sources[1].immediateValue)
+                     : m_registerBank->readFloatRegister(instr.sources[1].registerIndex);
+        
+        // Perform floating-point addition
+        float result = src1 + src2;
+        
+        // Write back to destination register
+        m_registerBank->writeFloatRegister(instr.dest.registerIndex, result);
+        
+        // Update performance counters
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute SUB.F32 instruction
+    bool executeSUB_F32(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 2) {
+            std::cerr << "Invalid SUB.F32 instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        float src1 = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+        float src2 = (instr.sources[1].type == OperandType::IMMEDIATE)
+                     ? *reinterpret_cast<const float*>(&instr.sources[1].immediateValue)
+                     : m_registerBank->readFloatRegister(instr.sources[1].registerIndex);
+        
+        float result = src1 - src2;
+        m_registerBank->writeFloatRegister(instr.dest.registerIndex, result);
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute MUL.F32 instruction
+    bool executeMUL_F32(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 2) {
+            std::cerr << "Invalid MUL.F32 instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        float src1 = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+        float src2 = (instr.sources[1].type == OperandType::IMMEDIATE)
+                     ? *reinterpret_cast<const float*>(&instr.sources[1].immediateValue)
+                     : m_registerBank->readFloatRegister(instr.sources[1].registerIndex);
+        
+        float result = src1 * src2;
+        m_registerBank->writeFloatRegister(instr.dest.registerIndex, result);
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute DIV.F32 instruction
+    bool executeDIV_F32(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 2) {
+            std::cerr << "Invalid DIV.F32 instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        float src1 = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+        float src2 = (instr.sources[1].type == OperandType::IMMEDIATE)
+                     ? *reinterpret_cast<const float*>(&instr.sources[1].immediateValue)
+                     : m_registerBank->readFloatRegister(instr.sources[1].registerIndex);
+        
+        if (src2 == 0.0f) {
+            std::cerr << "Division by zero in DIV.F32" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        float result = src1 / src2;
+        m_registerBank->writeFloatRegister(instr.dest.registerIndex, result);
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute FMA.F32 instruction (fused multiply-add)
+    bool executeFMA_F32(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 3) {
+            std::cerr << "Invalid FMA.F32 instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // fma.f32 %f0, %f1, %f2, %f3;  // %f0 = %f1 * %f2 + %f3
+        float src1 = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+        float src2 = m_registerBank->readFloatRegister(instr.sources[1].registerIndex);
+        float src3 = m_registerBank->readFloatRegister(instr.sources[2].registerIndex);
+        
+        // Use FMA if available, otherwise simulate
+        float result = src1 * src2 + src3;
+        
+        m_registerBank->writeFloatRegister(instr.dest.registerIndex, result);
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute SQRT.F32 instruction
+    bool executeSQRT_F32(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 1) {
+            std::cerr << "Invalid SQRT.F32 instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        float src = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+        float result = std::sqrt(src);
+        m_registerBank->writeFloatRegister(instr.dest.registerIndex, result);
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute NEG.F32 instruction
+    bool executeNEG_F32(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 1) {
+            std::cerr << "Invalid NEG.F32 instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        float src = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+        float result = -src;
+        m_registerBank->writeFloatRegister(instr.dest.registerIndex, result);
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute ABS.F32 instruction
+    bool executeABS_F32(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 1) {
+            std::cerr << "Invalid ABS.F32 instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        float src = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+        float result = std::abs(src);
+        m_registerBank->writeFloatRegister(instr.dest.registerIndex, result);
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // ===== Comparison Instructions =====
+    
+    // Execute SETP instruction
+    bool executeSETP(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::PREDICATE || instr.sources.size() != 2) {
+            std::cerr << "Invalid SETP instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        bool result = false;
+        
+        // Compare based on data type
+        if (instr.dataType == DataType::S32) {
+            int32_t src1 = static_cast<int32_t>(
+                m_registerBank->readRegister(instr.sources[0].registerIndex));
+            int32_t src2 = static_cast<int32_t>(
+                m_registerBank->readRegister(instr.sources[1].registerIndex));
+            
+            switch (instr.compareOp) {
+                case CompareOp::LT: result = (src1 < src2); break;
+                case CompareOp::LE: result = (src1 <= src2); break;
+                case CompareOp::GT: result = (src1 > src2); break;
+                case CompareOp::GE: result = (src1 >= src2); break;
+                case CompareOp::EQ: result = (src1 == src2); break;
+                case CompareOp::NE: result = (src1 != src2); break;
+                default: break;
+            }
+        } else if (instr.dataType == DataType::U32) {
+            uint32_t src1 = static_cast<uint32_t>(
+                m_registerBank->readRegister(instr.sources[0].registerIndex));
+            uint32_t src2 = static_cast<uint32_t>(
+                m_registerBank->readRegister(instr.sources[1].registerIndex));
+            
+            switch (instr.compareOp) {
+                case CompareOp::LO: result = (src1 < src2); break;
+                case CompareOp::LS: result = (src1 <= src2); break;
+                case CompareOp::HI: result = (src1 > src2); break;
+                case CompareOp::HS: result = (src1 >= src2); break;
+                case CompareOp::EQ: result = (src1 == src2); break;
+                case CompareOp::NE: result = (src1 != src2); break;
+                default: break;
+            }
+        } else if (instr.dataType == DataType::F32) {
+            float src1 = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+            float src2 = m_registerBank->readFloatRegister(instr.sources[1].registerIndex);
+            
+            switch (instr.compareOp) {
+                case CompareOp::LT: result = (src1 < src2); break;
+                case CompareOp::LE: result = (src1 <= src2); break;
+                case CompareOp::GT: result = (src1 > src2); break;
+                case CompareOp::GE: result = (src1 >= src2); break;
+                case CompareOp::EQ: result = (src1 == src2); break;
+                case CompareOp::NE: result = (src1 != src2); break;
+                default: break;
+            }
+        } else if (instr.dataType == DataType::F64) {
+            double src1 = m_registerBank->readDoubleRegister(instr.sources[0].registerIndex);
+            double src2 = m_registerBank->readDoubleRegister(instr.sources[1].registerIndex);
+            
+            switch (instr.compareOp) {
+                case CompareOp::LT: result = (src1 < src2); break;
+                case CompareOp::LE: result = (src1 <= src2); break;
+                case CompareOp::GT: result = (src1 > src2); break;
+                case CompareOp::GE: result = (src1 >= src2); break;
+                case CompareOp::EQ: result = (src1 == src2); break;
+                case CompareOp::NE: result = (src1 != src2); break;
+                default: break;
+            }
+        }
+        
+        // Write result to predicate register
+        m_registerBank->writePredicate(instr.dest.predicateIndex, result);
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute SELP (conditional select) instruction
+    bool executeSELP(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 3) {
+            std::cerr << "Invalid SELP instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // selp.s32 %r3, %r1, %r2, %p1;  // %r3 = %p1 ? %r1 : %r2
+        
+        // Read predicate (third source)
+        bool pred = false;
+        if (instr.sources[2].type == OperandType::PREDICATE) {
+            pred = m_registerBank->readPredicate(instr.sources[2].predicateIndex);
+        } else {
+            std::cerr << "Invalid predicate operand in SELP" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // Select based on data type
+        if (instr.dataType == DataType::S32 || instr.dataType == DataType::U32 || 
+            instr.dataType == DataType::S64 || instr.dataType == DataType::U64) {
+            // Integer types
+            uint64_t src1 = m_registerBank->readRegister(instr.sources[0].registerIndex);
+            uint64_t src2 = m_registerBank->readRegister(instr.sources[1].registerIndex);
+            uint64_t result = pred ? src1 : src2;
+            m_registerBank->writeRegister(instr.dest.registerIndex, result);
+        } else if (instr.dataType == DataType::F32) {
+            // Single precision float
+            float src1 = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+            float src2 = m_registerBank->readFloatRegister(instr.sources[1].registerIndex);
+            float result = pred ? src1 : src2;
+            m_registerBank->writeFloatRegister(instr.dest.registerIndex, result);
+        } else if (instr.dataType == DataType::F64) {
+            // Double precision float
+            double src1 = m_registerBank->readDoubleRegister(instr.sources[0].registerIndex);
+            double src2 = m_registerBank->readDoubleRegister(instr.sources[1].registerIndex);
+            double result = pred ? src1 : src2;
+            m_registerBank->writeDoubleRegister(instr.dest.registerIndex, result);
+        }
+        
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute CVT (type conversion) instruction
+    bool executeCVT(const DecodedInstruction& instr) {
+        if (instr.dest.type != OperandType::REGISTER || instr.sources.size() != 1) {
+            std::cerr << "Invalid CVT instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // cvt.dstType.srcType %dest, %src
+        
+        // Float to signed integer conversions
+        if (instr.srcType == DataType::F32 && instr.dstType == DataType::S32) {
+            float src = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+            int32_t dst = static_cast<int32_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, static_cast<uint64_t>(static_cast<int64_t>(dst)));
+        }
+        else if (instr.srcType == DataType::F64 && instr.dstType == DataType::S32) {
+            double src = m_registerBank->readDoubleRegister(instr.sources[0].registerIndex);
+            int32_t dst = static_cast<int32_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, static_cast<uint64_t>(static_cast<int64_t>(dst)));
+        }
+        else if (instr.srcType == DataType::F32 && instr.dstType == DataType::S64) {
+            float src = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+            int64_t dst = static_cast<int64_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, static_cast<uint64_t>(dst));
+        }
+        else if (instr.srcType == DataType::F64 && instr.dstType == DataType::S64) {
+            double src = m_registerBank->readDoubleRegister(instr.sources[0].registerIndex);
+            int64_t dst = static_cast<int64_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, static_cast<uint64_t>(dst));
+        }
+        
+        // Float to unsigned integer conversions
+        else if (instr.srcType == DataType::F32 && instr.dstType == DataType::U32) {
+            float src = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+            uint32_t dst = static_cast<uint32_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, static_cast<uint64_t>(dst));
+        }
+        else if (instr.srcType == DataType::F64 && instr.dstType == DataType::U32) {
+            double src = m_registerBank->readDoubleRegister(instr.sources[0].registerIndex);
+            uint32_t dst = static_cast<uint32_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, static_cast<uint64_t>(dst));
+        }
+        else if (instr.srcType == DataType::F32 && instr.dstType == DataType::U64) {
+            float src = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+            uint64_t dst = static_cast<uint64_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, dst);
+        }
+        else if (instr.srcType == DataType::F64 && instr.dstType == DataType::U64) {
+            double src = m_registerBank->readDoubleRegister(instr.sources[0].registerIndex);
+            uint64_t dst = static_cast<uint64_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, dst);
+        }
+        
+        // Signed integer to float conversions
+        else if (instr.srcType == DataType::S32 && instr.dstType == DataType::F32) {
+            int32_t src = static_cast<int32_t>(m_registerBank->readRegister(instr.sources[0].registerIndex));
+            float dst = static_cast<float>(src);
+            m_registerBank->writeFloatRegister(instr.dest.registerIndex, dst);
+        }
+        else if (instr.srcType == DataType::S64 && instr.dstType == DataType::F32) {
+            int64_t src = static_cast<int64_t>(m_registerBank->readRegister(instr.sources[0].registerIndex));
+            float dst = static_cast<float>(src);
+            m_registerBank->writeFloatRegister(instr.dest.registerIndex, dst);
+        }
+        else if (instr.srcType == DataType::S32 && instr.dstType == DataType::F64) {
+            int32_t src = static_cast<int32_t>(m_registerBank->readRegister(instr.sources[0].registerIndex));
+            double dst = static_cast<double>(src);
+            m_registerBank->writeDoubleRegister(instr.dest.registerIndex, dst);
+        }
+        else if (instr.srcType == DataType::S64 && instr.dstType == DataType::F64) {
+            int64_t src = static_cast<int64_t>(m_registerBank->readRegister(instr.sources[0].registerIndex));
+            double dst = static_cast<double>(src);
+            m_registerBank->writeDoubleRegister(instr.dest.registerIndex, dst);
+        }
+        
+        // Unsigned integer to float conversions
+        else if (instr.srcType == DataType::U32 && instr.dstType == DataType::F32) {
+            uint32_t src = static_cast<uint32_t>(m_registerBank->readRegister(instr.sources[0].registerIndex));
+            float dst = static_cast<float>(src);
+            m_registerBank->writeFloatRegister(instr.dest.registerIndex, dst);
+        }
+        else if (instr.srcType == DataType::U64 && instr.dstType == DataType::F32) {
+            uint64_t src = m_registerBank->readRegister(instr.sources[0].registerIndex);
+            float dst = static_cast<float>(src);
+            m_registerBank->writeFloatRegister(instr.dest.registerIndex, dst);
+        }
+        else if (instr.srcType == DataType::U32 && instr.dstType == DataType::F64) {
+            uint32_t src = static_cast<uint32_t>(m_registerBank->readRegister(instr.sources[0].registerIndex));
+            double dst = static_cast<double>(src);
+            m_registerBank->writeDoubleRegister(instr.dest.registerIndex, dst);
+        }
+        else if (instr.srcType == DataType::U64 && instr.dstType == DataType::F64) {
+            uint64_t src = m_registerBank->readRegister(instr.sources[0].registerIndex);
+            double dst = static_cast<double>(src);
+            m_registerBank->writeDoubleRegister(instr.dest.registerIndex, dst);
+        }
+        
+        // Float to float conversions (precision change)
+        else if (instr.srcType == DataType::F32 && instr.dstType == DataType::F64) {
+            float src = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+            double dst = static_cast<double>(src);
+            m_registerBank->writeDoubleRegister(instr.dest.registerIndex, dst);
+        }
+        else if (instr.srcType == DataType::F64 && instr.dstType == DataType::F32) {
+            double src = m_registerBank->readDoubleRegister(instr.sources[0].registerIndex);
+            float dst = static_cast<float>(src);
+            m_registerBank->writeFloatRegister(instr.dest.registerIndex, dst);
+        }
+        
+        // Integer to integer conversions (size/sign change)
+        else if (instr.srcType == DataType::S32 && instr.dstType == DataType::S64) {
+            int32_t src = static_cast<int32_t>(m_registerBank->readRegister(instr.sources[0].registerIndex));
+            int64_t dst = static_cast<int64_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, static_cast<uint64_t>(dst));
+        }
+        else if (instr.srcType == DataType::U32 && instr.dstType == DataType::U64) {
+            uint32_t src = static_cast<uint32_t>(m_registerBank->readRegister(instr.sources[0].registerIndex));
+            uint64_t dst = static_cast<uint64_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, dst);
+        }
+        else if (instr.srcType == DataType::S64 && instr.dstType == DataType::S32) {
+            int64_t src = static_cast<int64_t>(m_registerBank->readRegister(instr.sources[0].registerIndex));
+            int32_t dst = static_cast<int32_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, static_cast<uint64_t>(static_cast<int64_t>(dst)));
+        }
+        else if (instr.srcType == DataType::U64 && instr.dstType == DataType::U32) {
+            uint64_t src = m_registerBank->readRegister(instr.sources[0].registerIndex);
+            uint32_t dst = static_cast<uint32_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, static_cast<uint64_t>(dst));
+        }
+        
+        else {
+            std::cerr << "Unsupported CVT conversion: srcType=" << static_cast<int>(instr.srcType) 
+                      << " dstType=" << static_cast<int>(instr.dstType) << std::endl;
+        }
+        
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // ===== Atomic Operation Instructions =====
+    
+    // Execute ATOM.ADD (atomic add) instruction
+    bool executeATOM_ADD(const DecodedInstruction& instr) {
+        if (instr.sources.size() < 2) {
+            std::cerr << "Invalid ATOM.ADD instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // atom.global.add.u32 %r1, [%rd1], %r2;
+        // %r1 = old value at [%rd1]
+        // [%rd1] = [%rd1] + %r2
+        
+        // Get memory address (first source)
+        uint64_t address = 0;
+        if (instr.sources[0].type == OperandType::MEMORY) {
+            address = instr.sources[0].address;
+        } else if (instr.sources[0].type == OperandType::REGISTER) {
+            address = m_registerBank->readRegister(instr.sources[0].registerIndex);
+        } else {
+            std::cerr << "Invalid address operand in ATOM.ADD" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // Get value to add (second source)
+        uint32_t addValue = static_cast<uint32_t>(
+            m_registerBank->readRegister(instr.sources[1].registerIndex));
+        
+        // Determine memory space (default to GLOBAL)
+        MemorySpace space = (instr.memorySpace != MemorySpace::GLOBAL && 
+                            instr.memorySpace != MemorySpace::SHARED) 
+                            ? MemorySpace::GLOBAL : instr.memorySpace;
+        
+        // 🔒 Atomic operation: read-modify-write
+        // Note: In a real multi-threaded environment, this would need a mutex
+        uint32_t oldValue = m_memorySubsystem->read<uint32_t>(space, address);
+        uint32_t newValue = oldValue + addValue;
+        m_memorySubsystem->write<uint32_t>(space, address, newValue);
+        
+        // Return old value to destination register
+        if (instr.dest.type == OperandType::REGISTER) {
+            m_registerBank->writeRegister(instr.dest.registerIndex, 
+                                          static_cast<uint64_t>(oldValue));
+        }
+        
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute ATOM.SUB (atomic subtract) instruction
+    bool executeATOM_SUB(const DecodedInstruction& instr) {
+        if (instr.sources.size() < 2) {
+            std::cerr << "Invalid ATOM.SUB instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        uint64_t address = 0;
+        if (instr.sources[0].type == OperandType::MEMORY) {
+            address = instr.sources[0].address;
+        } else if (instr.sources[0].type == OperandType::REGISTER) {
+            address = m_registerBank->readRegister(instr.sources[0].registerIndex);
+        }
+        
+        uint32_t subValue = static_cast<uint32_t>(
+            m_registerBank->readRegister(instr.sources[1].registerIndex));
+        
+        MemorySpace space = (instr.memorySpace != MemorySpace::GLOBAL && 
+                            instr.memorySpace != MemorySpace::SHARED) 
+                            ? MemorySpace::GLOBAL : instr.memorySpace;
+        
+        uint32_t oldValue = m_memorySubsystem->read<uint32_t>(space, address);
+        uint32_t newValue = oldValue - subValue;
+        m_memorySubsystem->write<uint32_t>(space, address, newValue);
+        
+        if (instr.dest.type == OperandType::REGISTER) {
+            m_registerBank->writeRegister(instr.dest.registerIndex, 
+                                          static_cast<uint64_t>(oldValue));
+        }
+        
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute ATOM.EXCH (atomic exchange) instruction
+    bool executeATOM_EXCH(const DecodedInstruction& instr) {
+        if (instr.sources.size() < 2) {
+            std::cerr << "Invalid ATOM.EXCH instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // atom.global.exch.b32 %r1, [%rd1], %r2;
+        // %r1 = old value at [%rd1]
+        // [%rd1] = %r2
+        
+        uint64_t address = 0;
+        if (instr.sources[0].type == OperandType::MEMORY) {
+            address = instr.sources[0].address;
+        } else if (instr.sources[0].type == OperandType::REGISTER) {
+            address = m_registerBank->readRegister(instr.sources[0].registerIndex);
+        }
+        
+        uint32_t newValue = static_cast<uint32_t>(
+            m_registerBank->readRegister(instr.sources[1].registerIndex));
+        
+        MemorySpace space = (instr.memorySpace != MemorySpace::GLOBAL && 
+                            instr.memorySpace != MemorySpace::SHARED) 
+                            ? MemorySpace::GLOBAL : instr.memorySpace;
+        
+        uint32_t oldValue = m_memorySubsystem->read<uint32_t>(space, address);
+        m_memorySubsystem->write<uint32_t>(space, address, newValue);
+        
+        if (instr.dest.type == OperandType::REGISTER) {
+            m_registerBank->writeRegister(instr.dest.registerIndex, 
+                                          static_cast<uint64_t>(oldValue));
+        }
+        
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute ATOM.CAS (atomic compare-and-swap) instruction
+    bool executeATOM_CAS(const DecodedInstruction& instr) {
+        if (instr.sources.size() < 3) {
+            std::cerr << "Invalid ATOM.CAS instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        // atom.global.cas.b32 %r1, [%rd1], %r2, %r3;
+        // if ([%rd1] == %r2) [%rd1] = %r3;
+        // %r1 = old value at [%rd1]
+        
+        uint64_t address = 0;
+        if (instr.sources[0].type == OperandType::MEMORY) {
+            address = instr.sources[0].address;
+        } else if (instr.sources[0].type == OperandType::REGISTER) {
+            address = m_registerBank->readRegister(instr.sources[0].registerIndex);
+        }
+        
+        uint32_t compareValue = static_cast<uint32_t>(
+            m_registerBank->readRegister(instr.sources[1].registerIndex));
+        uint32_t newValue = static_cast<uint32_t>(
+            m_registerBank->readRegister(instr.sources[2].registerIndex));
+        
+        MemorySpace space = (instr.memorySpace != MemorySpace::GLOBAL && 
+                            instr.memorySpace != MemorySpace::SHARED) 
+                            ? MemorySpace::GLOBAL : instr.memorySpace;
+        
+        uint32_t oldValue = m_memorySubsystem->read<uint32_t>(space, address);
+        
+        // Only write if old value equals compare value
+        if (oldValue == compareValue) {
+            m_memorySubsystem->write<uint32_t>(space, address, newValue);
+        }
+        
+        // Always return old value
+        if (instr.dest.type == OperandType::REGISTER) {
+            m_registerBank->writeRegister(instr.dest.registerIndex, 
+                                          static_cast<uint64_t>(oldValue));
+        }
+        
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute ATOM.MIN (atomic minimum) instruction
+    bool executeATOM_MIN(const DecodedInstruction& instr) {
+        if (instr.sources.size() < 2) {
+            std::cerr << "Invalid ATOM.MIN instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        uint64_t address = 0;
+        if (instr.sources[0].type == OperandType::MEMORY) {
+            address = instr.sources[0].address;
+        } else if (instr.sources[0].type == OperandType::REGISTER) {
+            address = m_registerBank->readRegister(instr.sources[0].registerIndex);
+        }
+        
+        uint32_t compareValue = static_cast<uint32_t>(
+            m_registerBank->readRegister(instr.sources[1].registerIndex));
+        
+        MemorySpace space = (instr.memorySpace != MemorySpace::GLOBAL && 
+                            instr.memorySpace != MemorySpace::SHARED) 
+                            ? MemorySpace::GLOBAL : instr.memorySpace;
+        
+        uint32_t oldValue = m_memorySubsystem->read<uint32_t>(space, address);
+        uint32_t newValue = (oldValue < compareValue) ? oldValue : compareValue;
+        m_memorySubsystem->write<uint32_t>(space, address, newValue);
+        
+        if (instr.dest.type == OperandType::REGISTER) {
+            m_registerBank->writeRegister(instr.dest.registerIndex, 
+                                          static_cast<uint64_t>(oldValue));
+        }
+        
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        m_currentInstructionIndex++;
+        return true;
+    }
+    
+    // Execute ATOM.MAX (atomic maximum) instruction
+    bool executeATOM_MAX(const DecodedInstruction& instr) {
+        if (instr.sources.size() < 2) {
+            std::cerr << "Invalid ATOM.MAX instruction format" << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
+        uint64_t address = 0;
+        if (instr.sources[0].type == OperandType::MEMORY) {
+            address = instr.sources[0].address;
+        } else if (instr.sources[0].type == OperandType::REGISTER) {
+            address = m_registerBank->readRegister(instr.sources[0].registerIndex);
+        }
+        
+        uint32_t compareValue = static_cast<uint32_t>(
+            m_registerBank->readRegister(instr.sources[1].registerIndex));
+        
+        MemorySpace space = (instr.memorySpace != MemorySpace::GLOBAL && 
+                            instr.memorySpace != MemorySpace::SHARED) 
+                            ? MemorySpace::GLOBAL : instr.memorySpace;
+        
+        uint32_t oldValue = m_memorySubsystem->read<uint32_t>(space, address);
+        uint32_t newValue = (oldValue > compareValue) ? oldValue : compareValue;
+        m_memorySubsystem->write<uint32_t>(space, address, newValue);
+        
+        if (instr.dest.type == OperandType::REGISTER) {
+            m_registerBank->writeRegister(instr.dest.registerIndex, 
+                                          static_cast<uint64_t>(oldValue));
+        }
+        
+        m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
+        m_currentInstructionIndex++;
         return true;
     }
     
@@ -1141,6 +1904,186 @@ public:
         return m_pcToNode;
     }
     
+    // ========================================================================
+    // Multi-function execution support
+    // ========================================================================
+    
+    // Build label address cache from program structure
+    void buildLabelCache() {
+        if (!m_hasProgramStructure) return;
+        
+        m_labelAddressCache.clear();
+        
+        // Add global labels
+        for (const auto& [labelName, address] : m_program.symbolTable.globalLabels) {
+            m_labelAddressCache[labelName] = address;
+        }
+        
+        // Add function local labels
+        for (const auto& func : m_program.functions) {
+            for (const auto& [labelName, address] : func.localLabels) {
+                // Prefix with function name to avoid conflicts
+                std::string fullName = func.name + "::" + labelName;
+                m_labelAddressCache[fullName] = address;
+                // Also add without prefix for local resolution
+                m_labelAddressCache[labelName] = address;
+            }
+        }
+        
+        std::cout << "Built label cache with " << m_labelAddressCache.size() << " labels" << std::endl;
+    }
+    
+    // Resolve label to instruction address
+    bool resolveLabel(const std::string& labelName, size_t& outAddress) {
+        // Try current function's local labels first
+        if (!m_callStack.empty()) {
+            const std::string& currentFunc = m_callStack.back().functionName;
+            std::string fullName = currentFunc + "::" + labelName;
+            
+            auto it = m_labelAddressCache.find(fullName);
+            if (it != m_labelAddressCache.end()) {
+                outAddress = it->second;
+                return true;
+            }
+        }
+        
+        // Try global labels
+        auto it = m_labelAddressCache.find(labelName);
+        if (it != m_labelAddressCache.end()) {
+            outAddress = it->second;
+            return true;
+        }
+        
+        return false;
+    }
+    
+    // Validate register declarations against usage
+    bool validateRegisterDeclarations() {
+        if (!m_hasProgramStructure) return true;
+        
+        bool valid = true;
+        for (const auto& func : m_program.functions) {
+            // Check if register declarations are sufficient for function's instruction range
+            // This is a simple validation - just check that declarations exist
+            if (func.registerDeclarations.empty()) {
+                std::cerr << "Warning: Function " << func.name << " has no register declarations" << std::endl;
+                // Not necessarily an error - might use global registers
+            }
+        }
+        
+        return valid;
+    }
+    
+    // Call a function by name
+    bool callFunction(const std::string& funcName, const std::vector<uint64_t>& args) {
+        if (!m_hasProgramStructure) {
+            std::cerr << "Cannot call function: no program structure available" << std::endl;
+            return false;
+        }
+        
+        // Find the function
+        auto it = m_program.symbolTable.functions.find(funcName);
+        if (it == m_program.symbolTable.functions.end()) {
+            std::cerr << "Function not found: " << funcName << std::endl;
+            return false;
+        }
+        
+        const PTXFunction& func = it->second;
+        
+        // Create call frame
+        CallFrame frame;
+        frame.functionName = funcName;
+        frame.returnAddress = m_currentInstructionIndex + 1;
+        
+        // Set up parameters
+        for (size_t i = 0; i < args.size() && i < func.parameters.size(); ++i) {
+            const PTXParameter& param = func.parameters[i];
+            frame.localParameters[param.name] = args[i];
+            
+            // Also write to parameter memory
+            uint64_t paramAddr = 0x1000 + param.offset; // PARAMETER_MEMORY_BASE
+            m_memorySubsystem->write<uint64_t>(MemorySpace::GLOBAL, paramAddr, args[i]);
+        }
+        
+        // Push call frame
+        m_callStack.push_back(frame);
+        
+        // Jump to function entry
+        m_currentInstructionIndex = func.startInstructionIndex;
+        
+        std::cout << "Calling function: " << funcName << " with " << args.size() << " arguments" << std::endl;
+        
+        return true;
+    }
+    
+    // Return from current function
+    bool returnFromFunction(uint64_t* returnValue = nullptr) {
+        if (m_callStack.empty()) {
+            // No function to return from - end execution
+            m_executionComplete = true;
+            return true;
+        }
+        
+        CallFrame frame = m_callStack.back();
+        m_callStack.pop_back();
+        
+        // Restore return address
+        m_currentInstructionIndex = frame.returnAddress;
+        
+        std::cout << "Returning from function: " << frame.functionName << std::endl;
+        
+        return true;
+    }
+    
+    // Get parameter value by name (for ld.param instruction)
+    bool getParameterValue(const std::string& paramName, uint64_t& outValue) {
+        if (!m_hasProgramStructure) return false;
+        
+        // Try current function's parameters
+        if (!m_callStack.empty()) {
+            const CallFrame& frame = m_callStack.back();
+            auto it = frame.localParameters.find(paramName);
+            if (it != frame.localParameters.end()) {
+                outValue = it->second;
+                return true;
+            }
+        }
+        
+        // Try symbol table
+        auto it = m_program.symbolTable.parameterSymbols.find(paramName);
+        if (it != m_program.symbolTable.parameterSymbols.end()) {
+            const PTXParameter* param = it->second;
+            // Read from parameter memory
+            uint64_t paramAddr = 0x1000 + param->offset; // PARAMETER_MEMORY_BASE
+            outValue = m_memorySubsystem->read<uint64_t>(MemorySpace::GLOBAL, paramAddr);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    // Set parameter value (for st.param instruction)
+    bool setParameterValue(const std::string& paramName, uint64_t value) {
+        if (!m_hasProgramStructure) return false;
+        
+        // Update current function's parameters
+        if (!m_callStack.empty()) {
+            CallFrame& frame = m_callStack.back();
+            frame.localParameters[paramName] = value;
+        }
+        
+        // Update parameter memory
+        auto it = m_program.symbolTable.parameterSymbols.find(paramName);
+        if (it != m_program.symbolTable.parameterSymbols.end()) {
+            const PTXParameter* param = it->second;
+            uint64_t paramAddr = 0x1000 + param->offset; // PARAMETER_MEMORY_BASE
+            m_memorySubsystem->write<uint64_t>(MemorySpace::GLOBAL, paramAddr, value);
+            return true;
+        }
+        
+        return false;
+    }
+    
     // Core components
     std::unique_ptr<RegisterBank> m_registerBank;
     std::unique_ptr<MemorySubsystem> m_memorySubsystem;
@@ -1151,6 +2094,22 @@ public:
     std::vector<DecodedInstruction> m_decodedInstructions;
     size_t m_currentInstructionIndex = 0;
     bool m_executionComplete = false;
+    
+    // PTX Program (complete structure with functions, symbols, etc.)
+    PTXProgram m_program;
+    bool m_hasProgramStructure = false;
+    
+    // Function call stack for multi-function execution
+    struct CallFrame {
+        std::string functionName;
+        size_t returnAddress;
+        std::map<std::string, uint64_t> savedRegisters;
+        std::map<std::string, uint64_t> localParameters;
+    };
+    std::vector<CallFrame> m_callStack;
+    
+    // Label resolution cache
+    std::map<std::string, size_t> m_labelAddressCache;
     
     // Performance counters
     PerformanceCounters* m_performanceCounters;
@@ -1179,8 +2138,7 @@ public:
 };
 
 PTXExecutor::PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubsystem, PerformanceCounters& performanceCounters) 
-    : pImpl(std::make_unique<Impl>()), 
-      m_performanceCounters(performanceCounters) {
+    : pImpl(std::make_unique<Impl>()) {
     // Override the default register bank and memory subsystem with the provided ones
     // pImpl->setComponents(registerBank, memorySubsystem);
     pImpl->setPerformanceCounters(performanceCounters);
@@ -1200,6 +2158,46 @@ bool PTXExecutor::initialize(const std::vector<DecodedInstruction>& decodedInstr
     
     // Build control flow graph from decoded instructions
     pImpl->buildCFGFromDecodedInstructions(decodedInstructions);
+    
+    return true;
+}
+
+bool PTXExecutor::initialize(const PTXProgram& program) {
+    // Store the complete PTX program (includes functions, parameters, symbol table)
+    pImpl->m_program = program;
+    pImpl->m_hasProgramStructure = true;
+    
+    pImpl->setDecodedInstructions(program.instructions);
+    pImpl->setCurrentInstructionIndex(0);
+    pImpl->setExecutionComplete(false);
+    
+    // Build control flow graph from decoded instructions
+    pImpl->buildCFGFromDecodedInstructions(program.instructions);
+    
+    // Build label address cache for quick lookup
+    pImpl->buildLabelCache();
+    
+    // Validate register declarations
+    if (!pImpl->validateRegisterDeclarations()) {
+        std::cerr << "Warning: Register declaration validation failed" << std::endl;
+    }
+    
+    std::cout << "PTXExecutor initialized with PTXProgram:" << std::endl;
+    std::cout << "  Version: " << program.metadata.version << std::endl;
+    std::cout << "  Target: " << program.metadata.target << std::endl;
+    std::cout << "  Functions: " << program.functions.size() << std::endl;
+    std::cout << "  Instructions: " << program.instructions.size() << std::endl;
+    std::cout << "  Entry points: " << program.entryPoints.size() << std::endl;
+    
+    // If there's an entry point, start execution from there
+    if (!program.entryPoints.empty()) {
+        size_t entryFuncIndex = program.entryPoints[0];
+        if (entryFuncIndex < program.functions.size()) {
+            const PTXFunction& entryFunc = program.functions[entryFuncIndex];
+            pImpl->setCurrentInstructionIndex(entryFunc.startInstructionIndex);
+            std::cout << "  Starting execution from entry point: " << entryFunc.name << std::endl;
+        }
+    }
     
     return true;
 }
@@ -1250,4 +2248,24 @@ ReconvergenceMechanism& PTXExecutor::getReconvergenceMechanism() {
 
 InstructionScheduler& PTXExecutor::getInstructionScheduler() {
     return pImpl->getInstructionScheduler();
+}
+
+// ============================================================================
+// Multi-function execution support
+// ============================================================================
+
+bool PTXExecutor::callFunction(const std::string& funcName, const std::vector<uint64_t>& args) {
+    return pImpl->callFunction(funcName, args);
+}
+
+bool PTXExecutor::hasProgramStructure() const {
+    return pImpl->m_hasProgramStructure;
+}
+
+size_t PTXExecutor::getCallStackDepth() const {
+    return pImpl->m_callStack.size();
+}
+
+const PTXProgram& PTXExecutor::getProgram() const {
+    return pImpl->m_program;
 }

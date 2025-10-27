@@ -7,6 +7,7 @@
         "*.wxml": "ttml",
         "*.sk": "ttml",
         "stdexcept": "cpp",
-        "vector": "cpp"
+        "vector": "cpp",
+        "cstdlib": "cpp"
     }
 }

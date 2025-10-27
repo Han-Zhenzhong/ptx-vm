@@ -107,6 +107,9 @@ public:
     
     // Initialize the executor with decoded instructions directly
     bool initialize(const std::vector<DecodedInstruction>& decodedInstructions);
+    
+    // Initialize the executor with complete PTX program (recommended)
+    bool initialize(const PTXProgram& program);
 
     // Execute the program
     bool execute();
@@ -142,6 +145,22 @@ public:
     
     // Get reference to performance counters
     PerformanceCounters& getPerformanceCounters();
+    
+    // ========================================================================
+    // Multi-function execution support (requires PTXProgram initialization)
+    // ========================================================================
+    
+    // Call a function by name with arguments
+    bool callFunction(const std::string& funcName, const std::vector<uint64_t>& args = {});
+    
+    // Check if program structure is available
+    bool hasProgramStructure() const;
+    
+    // Get current call stack depth
+    size_t getCallStackDepth() const;
+    
+    // Get the loaded PTX program structure
+    const PTXProgram& getProgram() const;
 
 private:
     // Private implementation details

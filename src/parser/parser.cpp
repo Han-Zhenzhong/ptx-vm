@@ -2,384 +2,709 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
-#include <algorithm>
-#include <cctype>
 #include <regex>
-#include <unordered_map>
+#include <cctype>
+#include <algorithm>
 
-// Private implementation class
-class PTXParser::Impl {
-public:
-    Impl() {
-        // Initialize default state
-        m_errorMessage = "";
-    }
-    
-    ~Impl() = default;
-
-    // Parse a PTX file
-    bool parseFile(const std::string& filename) {
-        // Open file
-        std::ifstream file(filename);
-        if (!file.is_open()) {
-            m_errorMessage = "Failed to open file: " + filename;
-            return false;
-        }
-        
-        // Read file contents
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        file.close();
-        
-        // Parse contents
-        return parseString(buffer.str());
-    }
-
-    // Parse PTX code from string
-    bool parseString(const std::string& ptxCode) {
-        // Clear previous instructions
-        m_instructions.clear();
-        m_errorMessage = "";
-        
-        // Split code into lines
-        std::istringstream iss(ptxCode);
-        std::string line;
-        size_t lineNumber = 0;
-        
-        while (std::getline(iss, line)) {
-            lineNumber++;
-            // Trim whitespace first
-            line = trim(line);
-            // Skip empty lines and comments (including lines with leading spaces before //)
-            if (line.empty() || line[0] == '#' || (line.length() >= 2 && line[0] == '/' && line[1] == '/')) {
-                continue;
-            }
-            if (line.substr(0, 2) == "//") {
-                continue;
-            }
-            // Skip if still empty (redundant, but safe)
-            if (line.empty()) {
-                continue;
-            }
-            // Try to parse the line as an instruction
-            PTXInstruction ptInstruction;
-            if (parsePTXInstruction(line, ptInstruction)) {
-                // Convert PTXInstruction to DecodedInstruction
-                DecodedInstruction instruction = {};
-                // 1. opcode 映射
-                instruction.type = opcodeFromString(ptInstruction.opcode);
-                // 2. 目标操作数
-                if (!ptInstruction.dest.empty()) {
-                    instruction.dest = parseOperand(ptInstruction.dest);
-                }
-                // 3. 源操作数
-                for (const auto& src : ptInstruction.sources) {
-                    instruction.sources.push_back(parseOperand(src));
-                }
-                // 4. 修饰符
-                instruction.modifiers = encodeModifiers(ptInstruction.modifiers);
-                // 5. 谓词
-                instruction.hasPredicate = !ptInstruction.predicate.empty();
-                if (instruction.hasPredicate) {
-                    // 假设谓词格式为p0/p1等
-                    if (ptInstruction.predicate[0] == '!') {
-                        instruction.predicateValue = false;
-                        instruction.predicateIndex = std::stoi(ptInstruction.predicate.substr(2));
-                    } else {
-                        instruction.predicateValue = true;
-                        instruction.predicateIndex = std::stoi(ptInstruction.predicate.substr(1));
-                    }
-                }
-                m_instructions.push_back(instruction);
-            }
-        }
-        
-        return true;
-    }
-
-    // --- 辅助函数 ---
-    // 1. opcode字符串到InstructionTypes映射
-    InstructionTypes opcodeFromString(const std::string& op) {
-        static const std::unordered_map<std::string, InstructionTypes> table = {
-            {"add", InstructionTypes::ADD},
-            {"sub", InstructionTypes::SUB},
-            {"mul", InstructionTypes::MUL},
-            {"div", InstructionTypes::DIV},
-            {"rem", InstructionTypes::REM},
-            {"and", InstructionTypes::AND},
-            {"or", InstructionTypes::OR},
-            {"xor", InstructionTypes::XOR},
-            {"not", InstructionTypes::NOT},
-            {"shl", InstructionTypes::SHL},
-            {"shr", InstructionTypes::SHR},
-            {"neg", InstructionTypes::NEG},
-            {"abs", InstructionTypes::ABS},
-            {"bra", InstructionTypes::BRA},
-            {"jump", InstructionTypes::JUMP},
-            {"call", InstructionTypes::CALL},
-            {"ret", InstructionTypes::RET},
-            {"sync", InstructionTypes::SYNC},
-            {"membar", InstructionTypes::MEMBAR},
-            {"ld", InstructionTypes::LD},
-            {"st", InstructionTypes::ST},
-            {"mov", InstructionTypes::MOV},
-            {"cmov", InstructionTypes::CMOV},
-            {"ld.param", InstructionTypes::LD_PARAM},
-            {"st.param", InstructionTypes::ST_PARAM},
-            {"nop", InstructionTypes::NOP},
-            {"barrier", InstructionTypes::BARRIER},
-            {"ld.global", InstructionTypes::LD_GLOBAL},
-            {"ld.shared", InstructionTypes::LD_SHARED},
-            {"ld.local", InstructionTypes::LD_LOCAL},
-            {"ld.param", InstructionTypes::LD_PARAM},
-            {"st.global", InstructionTypes::ST_GLOBAL},
-            {"st.shared", InstructionTypes::ST_SHARED},
-            {"st.local", InstructionTypes::ST_LOCAL},
-            {"st.param", InstructionTypes::ST_PARAM},
-        };
-        auto it = table.find(op);
-        if (it != table.end()) return it->second;
-        // fallback for any other ld.* or st.*
-        if (op.find("ld.") == 0) return InstructionTypes::LD;
-        if (op.find("st.") == 0) return InstructionTypes::ST;
-        return InstructionTypes::MAX_INSTRUCTION_TYPE;
-    }
-
-    // 2. 字符串到Operand解析
-    Operand parseOperand(const std::string& s) {
-        Operand operand = {};
-        operand.isAddress = false;
-        operand.isIndirect = false;
-        std::string str = s;
-        // 判断内存寻址
-        if (!str.empty() && str.front() == '[' && str.back() == ']') {
-            operand.type = OperandType::MEMORY;
-            operand.isAddress = true;
-            // 去除[]
-            str = str.substr(1, str.size() - 2);
-            // 这里不管str内容是什么都视为MEMORY，address=0（如有需要可扩展符号名字段）
-            operand.address = 0;
-        } else if (!str.empty() && str[0] == '%') {
-            // 判断寄存器
-            operand.type = OperandType::REGISTER;
-            // %r0, %f1, %p2等
-            size_t idx = 2;
-            if (str.size() > 2 && std::isdigit(str[2])) {
-                idx = 2;
-            } else if (str.size() > 3 && std::isdigit(str[3])) {
-                idx = 3;
-            }
-            operand.registerIndex = std::stoi(str.substr(idx));
-        } else if (!str.empty() && (std::isdigit(str[0]) || (str[0] == '-' && str.size() > 1 && std::isdigit(str[1])))) {
-            // 立即数
-            operand.type = OperandType::IMMEDIATE;
-            operand.immediateValue = std::stoll(str);
-        } else if (!str.empty() && str[0] == 'p') {
-            // 谓词寄存器
-            operand.type = OperandType::PREDICATE;
-            operand.predicateIndex = std::stoi(str.substr(1));
-        } else if (!str.empty()) {
-            // 只要非空，且不是其他类型，都视为符号内存寻址
-            operand.type = OperandType::MEMORY;
-            operand.isAddress = true;
-            operand.address = 0;
-        } else {
-            operand.type = OperandType::UNKNOWN;
-        }
-        return operand;
-    }
-
-    // 3. 修饰符编码（简单实现：每个修饰符hash后或到一起）
-    uint32_t encodeModifiers(const std::vector<std::string>& mods) {
-        uint32_t result = 0;
-        for (const auto& m : mods) {
-            for (char c : m) {
-                result ^= (uint32_t)c;
-                result = (result << 1) | (result >> 31);
-            }
-        }
-        return result;
-    }
-
-    // Get parsed instructions
-    const std::vector<DecodedInstruction>& getInstructions() const {
-        return m_instructions;
-    }
-
-    // Get error message if parsing failed
-    const std::string& getErrorMessage() const {
-        return m_errorMessage;
-    }
-
-private:
-    // Helper function to trim all leading and trailing whitespace (space, tab, etc.)
-    std::string trim(const std::string& str) {
-        size_t first = str.find_first_not_of(" \t\n\r\f\v");
-        if (first == std::string::npos) {
-            return "";
-        }
-        size_t last = str.find_last_not_of(" \t\n\r\f\v");
-        return str.substr(first, (last - first + 1));
-    }
-    
-    // Parse a single PTX instruction line into a PTXInstruction struct
-    // 修复点：
-    // 1. 支持行尾注释（去除 // 及其后内容）
-    // 2. 支持 trim 时去除制表符和所有空白字符
-    // 3. 支持立即数、负号、结构体成员等操作数
-    // 4. 支持括号嵌套的 splitOperands
-    // 5. 支持 label 行只有一个字符时不越界
-    bool parsePTXInstruction(const std::string& line, PTXInstruction& instruction) {
-        // 去除行尾注释
-        std::string codeLine = line;
-        size_t commentPos = codeLine.find("//");
-        if (commentPos != std::string::npos) {
-            codeLine = codeLine.substr(0, commentPos);
-        }
-        std::string trimmedLine = trim(codeLine);
-        if (trimmedLine.empty()) return false;
-        // 跳过标签和指令
-        if (trimmedLine.size() == 1 && trimmedLine[0] == ':') return false;
-        if (trimmedLine.back() == ':' || trimmedLine[0] == '.') {
-            return false;
-        }
-        // 支持复合操作码和类型修饰符分离（如ld.param.u64 => opcode=ld.param, modifier=u64）
-        std::regex instructionRegex(R"(^(@\w+)?\s*([\w]+(?:\.[\w]+)*?)\.(\w+)\s+(.+)$)");
-        std::smatch matches;
-        if (std::regex_search(trimmedLine, matches, instructionRegex) && matches.size() > 4) {
-            // 谓词
-            if (matches[1].matched) {
-                instruction.predicate = matches[1].str().substr(1);
-            }
-            // 操作码（如ld.param）
-            instruction.opcode = matches[2].str();
-            // 修饰符（如u64）
-            if (matches[3].matched) {
-                std::string modifiersStr = matches[3].str();
-                if (!modifiersStr.empty()) {
-                    instruction.modifiers.push_back(modifiersStr);
-                }
-            }
-            // 操作数
-            std::string operandsStr = matches[4].str();
-            std::vector<std::string> operands = splitOperands(operandsStr);
-            if (!operands.empty()) {
-                instruction.dest = operands[0];
-                for (size_t i = 1; i < operands.size(); ++i) {
-                    instruction.sources.push_back(operands[i]);
-                }
-            }
-            return true;
-        } else {
-            // 无操作数指令
-            std::regex simpleRegex(R"(^(@\w+)?\s*([\w]+(?:\.[\w]+)*?)\.(\w+)$)");
-            if (std::regex_search(trimmedLine, matches, simpleRegex) && matches.size() > 2) {
-                if (matches[1].matched) {
-                    instruction.predicate = matches[1].str().substr(1);
-                }
-                instruction.opcode = matches[2].str();
-                if (matches[3].matched) {
-                    std::string modifiersStr = matches[3].str();
-                    if (!modifiersStr.empty()) {
-                        instruction.modifiers.push_back(modifiersStr);
-                    }
-                }
-                return true;
-            }
-            // 没有修饰符的情况
-            std::regex noModRegex(R"(^(@\w+)?\s*([\w]+(?:\.[\w]+)*)\s+(.+)$)");
-            if (std::regex_search(trimmedLine, matches, noModRegex) && matches.size() > 3) {
-                if (matches[1].matched) {
-                    instruction.predicate = matches[1].str().substr(1);
-                }
-                instruction.opcode = matches[2].str();
-                std::string operandsStr = matches[3].str();
-                std::vector<std::string> operands = splitOperands(operandsStr);
-                if (!operands.empty()) {
-                    instruction.dest = operands[0];
-                    for (size_t i = 1; i < operands.size(); ++i) {
-                        instruction.sources.push_back(operands[i]);
-                    }
-                }
-                return true;
-            }
-            // 无操作数无修饰符
-            std::regex noModSimpleRegex(R"(^(@\w+)?\s*([\w]+(?:\.[\w]+)*)$)");
-            if (std::regex_search(trimmedLine, matches, noModSimpleRegex) && matches.size() > 2) {
-                if (matches[1].matched) {
-                    instruction.predicate = matches[1].str().substr(1);
-                }
-                instruction.opcode = matches[2].str();
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    // Split operands by comma, but respect all types of brackets ([], (), {})
-    std::vector<std::string> splitOperands(const std::string& operandsStr) {
-        std::vector<std::string> operands;
-        std::string currentOperand;
-        int round = 0, square = 0, curly = 0;
-        for (size_t i = 0; i < operandsStr.size(); ++i) {
-            char c = operandsStr[i];
-            if (c == ',' && round == 0 && square == 0 && curly == 0) {
-                std::string trimmed = trim(currentOperand);
-                if (!trimmed.empty()) {
-                    operands.push_back(trimmed);
-                }
-                currentOperand.clear();
-            } else {
-                if (c == '(') round++;
-                if (c == ')') round--;
-                if (c == '[') square++;
-                if (c == ']') square--;
-                if (c == '{') curly++;
-                if (c == '}') curly--;
-                currentOperand += c;
-            }
-        }
-        std::string trimmed = trim(currentOperand);
-        if (!trimmed.empty()) {
-            operands.push_back(trimmed);
-        }
-        return operands;
-    }
-    
-    // Parsed instructions
-    std::vector<DecodedInstruction> m_instructions;
-    
-    // Error message
-    std::string m_errorMessage;
+// PTXInstruction - 临时结构用于解析过程
+struct PTXInstruction
+{
+    std::string predicate;
+    std::string opcode;
+    std::vector<std::string> modifiers;
+    std::string dest;
+    std::vector<std::string> sources;
 };
 
-PTXParser::PTXParser() : pImpl(std::make_unique<Impl>()) {}
+// PTXParser::Impl - 私有实现类
+class PTXParser::Impl
+{
+public:
+    Impl() = default;
+    ~Impl() = default;
 
-PTXParser::~PTXParser() = default;
+    bool parseFile(const std::string &filename);
+    bool parseString(const std::string &ptxCode);
+    const PTXProgram &getProgram() const { return m_program; }
+    const std::vector<DecodedInstruction> &getInstructions() const { return m_program.instructions; }
+    const std::string &getErrorMessage() const { return m_errorMessage; }
 
-bool PTXParser::parseFile(const std::string& filename) {
-    return pImpl->parseFile(filename);
+private:
+    void preprocessLines(const std::string &ptxCode);
+    bool firstPass();
+    bool secondPass();
+    bool parseMetadata(const std::string &line);
+    PTXFunction *parseFunctionDeclaration(const std::string &line, size_t &lineIndex);
+    std::string extractFunctionName(const std::string &declaration);
+    std::vector<PTXParameter> parseParameters(const std::string &declaration);
+    PTXRegisterDeclaration parseRegisterDeclaration(const std::string &line);
+    bool parseInstruction(const std::string &line, PTXInstruction &instr);
+    DecodedInstruction convertToDecoded(const PTXInstruction &ptxInstr);
+    void buildSymbolTable();
+
+    std::string trim(const std::string &str);
+    std::string extractValue(const std::string &line, const std::string &directive);
+    std::vector<std::string> split(const std::string &str, char delimiter);
+    std::vector<std::string> splitOperands(const std::string &operandsStr);
+    size_t getTypeSize(const std::string &type);
+    InstructionTypes opcodeToInstructionType(const std::string &opcode, const std::vector<std::string>& modifiers = {});
+    Operand parseOperand(const std::string &str);
+
+private:
+    PTXProgram m_program;
+    std::string m_errorMessage;
+    std::vector<std::string> m_lines;
+};
+
+// 实现部分将在下一个文件中继续...
+// 占位符实现
+
+bool PTXParser::Impl::parseFile(const std::string &filename)
+{
+    std::ifstream file(filename);
+    if (!file.is_open())
+    {
+        m_errorMessage = "Failed to open file: " + filename;
+        return false;
+    }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return parseString(buffer.str());
 }
 
-bool PTXParser::parseString(const std::string& ptxCode) {
-    return pImpl->parseString(ptxCode);
+bool PTXParser::Impl::parseString(const std::string &ptxCode)
+{
+    m_program = PTXProgram();
+    m_errorMessage = "";
+    m_lines.clear();
+    preprocessLines(ptxCode);
+    if (!firstPass())
+        return false;
+    if (!secondPass())
+        return false;
+    buildSymbolTable();
+    return true;
 }
 
-const std::vector<DecodedInstruction>& PTXParser::getInstructions() const {
-    return pImpl->getInstructions();
+void PTXParser::Impl::preprocessLines(const std::string &ptxCode)
+{
+    std::istringstream iss(ptxCode);
+    std::string line;
+    while (std::getline(iss, line))
+    {
+        size_t commentPos = line.find("//");
+        if (commentPos != std::string::npos)
+        {
+            line = line.substr(0, commentPos);
+        }
+        line = trim(line);
+        if (!line.empty())
+        {
+            m_lines.push_back(line);
+        }
+    }
 }
 
-const std::string& PTXParser::getErrorMessage() const {
-    return pImpl->getErrorMessage();
+bool PTXParser::Impl::firstPass()
+{
+    PTXFunction *currentFunction = nullptr;
+    size_t instructionCount = 0;
+    for (size_t i = 0; i < m_lines.size(); ++i)
+    {
+        const std::string &line = m_lines[i];
+        if (parseMetadata(line))
+            continue;
+        if (line.find(".entry") == 0 || line.find(".func") == 0)
+        {
+            currentFunction = parseFunctionDeclaration(line, i);
+            if (currentFunction)
+            {
+                currentFunction->startInstructionIndex = instructionCount;
+            }
+            continue;
+        }
+        if (line == "{")
+            continue;
+        if (line == "}")
+        {
+            if (currentFunction)
+            {
+                currentFunction->endInstructionIndex = instructionCount > 0 ? instructionCount - 1 : 0;
+            }
+            currentFunction = nullptr;
+            continue;
+        }
+        if (currentFunction)
+        {
+            if (line.find(".reg") == 0)
+            {
+                PTXRegisterDeclaration regDecl = parseRegisterDeclaration(line);
+                if (!regDecl.type.empty())
+                {
+                    currentFunction->registerDeclarations.push_back(regDecl);
+                }
+                continue;
+            }
+            if (line.back() == ':')
+            {
+                std::string labelName = line.substr(0, line.size() - 1);
+                currentFunction->localLabels[labelName] = instructionCount;
+                continue;
+            }
+            if (line[0] != '.')
+            {
+                instructionCount++;
+            }
+        }
+    }
+    return true;
 }
 
-// Factory functions
-extern "C" {
-    PTXParser* createPTXParser() {
-        return new PTXParser();
+bool PTXParser::Impl::secondPass()
+{
+    bool inFunctionBody = false;
+    for (const std::string &line : m_lines)
+    {
+        if (line == "{")
+        {
+            inFunctionBody = true;
+            continue;
+        }
+        if (line == "}")
+        {
+            inFunctionBody = false;
+            continue;
+        }
+        if (!inFunctionBody)
+            continue;
+        if (line[0] == '.' || line.back() == ':')
+            continue;
+        PTXInstruction ptxInstr;
+        if (parseInstruction(line, ptxInstr))
+        {
+            DecodedInstruction decoded = convertToDecoded(ptxInstr);
+            m_program.instructions.push_back(decoded);
+        }
+    }
+    return true;
+}
+
+bool PTXParser::Impl::parseMetadata(const std::string &line)
+{
+    if (line.find(".version") == 0)
+    {
+        m_program.metadata.version = extractValue(line, ".version");
+        return true;
+    }
+    if (line.find(".target") == 0)
+    {
+        m_program.metadata.target = extractValue(line, ".target");
+        m_program.metadata.debugMode = (line.find("debug") != std::string::npos);
+        return true;
+    }
+    if (line.find(".address_size") == 0)
+    {
+        std::string sizeStr = extractValue(line, ".address_size");
+        if (!sizeStr.empty())
+        {
+            m_program.metadata.addressSize = std::stoi(sizeStr);
+        }
+        return true;
+    }
+    return false;
+}
+
+PTXFunction *PTXParser::Impl::parseFunctionDeclaration(const std::string &line, size_t &lineIndex)
+{
+    PTXFunction func;
+    func.isEntry = (line.find(".entry") == 0);
+    std::string fullDecl = line;
+    while (fullDecl.find(")") == std::string::npos && lineIndex + 1 < m_lines.size())
+    {
+        lineIndex++;
+        fullDecl += " " + m_lines[lineIndex];
+    }
+    func.name = extractFunctionName(fullDecl);
+    func.parameters = parseParameters(fullDecl);
+    m_program.functions.push_back(func);
+    if (func.isEntry)
+    {
+        m_program.entryPoints.push_back(m_program.functions.size() - 1);
+    }
+    return &m_program.functions.back();
+}
+
+std::string PTXParser::Impl::extractFunctionName(const std::string &declaration)
+{
+    std::regex nameRegex(R"(\.(?:entry|func)\s+(?:\([^)]*\)\s+)?(\w+)\s*\()");
+    std::smatch matches;
+    if (std::regex_search(declaration, matches, nameRegex))
+    {
+        return matches[1].str();
+    }
+    return "";
+}
+
+std::vector<PTXParameter> PTXParser::Impl::parseParameters(const std::string &declaration)
+{
+    std::vector<PTXParameter> params;
+    size_t start = declaration.find('(');
+    size_t end = declaration.rfind(')');
+    if (start == std::string::npos || end == std::string::npos)
+        return params;
+    std::string paramStr = declaration.substr(start + 1, end - start - 1);
+    std::regex paramRegex(R"(\.param\s+(\.[\w]+)\s+(\w+))");
+    std::smatch matches;
+    std::string::const_iterator searchStart(paramStr.cbegin());
+    size_t offset = 0;
+    while (std::regex_search(searchStart, paramStr.cend(), matches, paramRegex))
+    {
+        PTXParameter param;
+        param.type = matches[1].str();
+        param.name = matches[2].str();
+        param.offset = offset;
+        param.size = getTypeSize(param.type);
+        param.isPointer = (param.type == ".u64" || param.type == ".s64");
+        params.push_back(param);
+        offset += param.size;
+        searchStart = matches.suffix().first;
+    }
+    return params;
+}
+
+PTXRegisterDeclaration PTXParser::Impl::parseRegisterDeclaration(const std::string &line)
+{
+    PTXRegisterDeclaration decl;
+    std::regex regRegex(R"(\.reg\s+(\.[\w]+)\s+%(\w+)<(\d+)>)");
+    std::smatch matches;
+    if (std::regex_search(line, matches, regRegex))
+    {
+        decl.type = matches[1].str();
+        decl.baseRegister = matches[2].str();
+        decl.startIndex = 0;
+        decl.count = std::stoi(matches[3].str());
+    }
+    return decl;
+}
+
+bool PTXParser::Impl::parseInstruction(const std::string &line, PTXInstruction &instr)
+{
+    std::string remaining = line;
+    if (remaining[0] == '@')
+    {
+        size_t spacePos = remaining.find(' ');
+        if (spacePos != std::string::npos)
+        {
+            instr.predicate = remaining.substr(1, spacePos - 1);
+            remaining = trim(remaining.substr(spacePos + 1));
+        }
+    }
+    size_t spacePos = remaining.find(' ');
+    std::string opcodeWithMods = (spacePos != std::string::npos) ? remaining.substr(0, spacePos) : remaining;
+    std::vector<std::string> parts = split(opcodeWithMods, '.');
+    if (parts.empty())
+        return false;
+    instr.opcode = parts[0];
+    for (size_t i = 1; i < parts.size(); ++i)
+    {
+        instr.modifiers.push_back("." + parts[i]);
+    }
+    if (spacePos != std::string::npos)
+    {
+        std::string operandsStr = trim(remaining.substr(spacePos + 1));
+        std::vector<std::string> operands = splitOperands(operandsStr);
+        if (!operands.empty())
+        {
+            instr.dest = operands[0];
+            for (size_t i = 1; i < operands.size(); ++i)
+            {
+                instr.sources.push_back(operands[i]);
+            }
+        }
+    }
+    return true;
+}
+
+DecodedInstruction PTXParser::Impl::convertToDecoded(const PTXInstruction &ptxInstr)
+{
+    DecodedInstruction decoded = {};
+    decoded.type = opcodeToInstructionType(ptxInstr.opcode, ptxInstr.modifiers);
+    
+    // Parse data type from modifiers
+    decoded.dataType = DataType::U32; // default
+    for (const auto& mod : ptxInstr.modifiers) {
+        if (mod == ".s8") decoded.dataType = DataType::S8;
+        else if (mod == ".s16") decoded.dataType = DataType::S16;
+        else if (mod == ".s32") decoded.dataType = DataType::S32;
+        else if (mod == ".s64") decoded.dataType = DataType::S64;
+        else if (mod == ".u8") decoded.dataType = DataType::U8;
+        else if (mod == ".u16") decoded.dataType = DataType::U16;
+        else if (mod == ".u32") decoded.dataType = DataType::U32;
+        else if (mod == ".u64") decoded.dataType = DataType::U64;
+        else if (mod == ".f16") decoded.dataType = DataType::F16;
+        else if (mod == ".f32") decoded.dataType = DataType::F32;
+        else if (mod == ".f64") decoded.dataType = DataType::F64;
     }
     
-    void destroyPTXParser(PTXParser* parser) {
-        delete parser;
+    // Parse CVT instruction types (cvt.dstType.srcType)
+    // For CVT, modifiers are in format: [".cvt", ".dstType", ".srcType"]
+    if (ptxInstr.opcode == "cvt" && ptxInstr.modifiers.size() >= 2) {
+        // First modifier is destination type, second is source type
+        auto parseType = [](const std::string& mod) -> DataType {
+            if (mod == ".s8") return DataType::S8;
+            if (mod == ".s16") return DataType::S16;
+            if (mod == ".s32") return DataType::S32;
+            if (mod == ".s64") return DataType::S64;
+            if (mod == ".u8") return DataType::U8;
+            if (mod == ".u16") return DataType::U16;
+            if (mod == ".u32") return DataType::U32;
+            if (mod == ".u64") return DataType::U64;
+            if (mod == ".f16") return DataType::F16;
+            if (mod == ".f32") return DataType::F32;
+            if (mod == ".f64") return DataType::F64;
+            return DataType::U32;
+        };
+        
+        decoded.dstType = parseType(ptxInstr.modifiers[0]);
+        decoded.srcType = parseType(ptxInstr.modifiers[1]);
+    }
+    
+    // Parse comparison operator from modifiers (for setp)
+    decoded.compareOp = CompareOp::EQ; // default
+    for (const auto& mod : ptxInstr.modifiers) {
+        if (mod == ".eq") decoded.compareOp = CompareOp::EQ;
+        else if (mod == ".ne") decoded.compareOp = CompareOp::NE;
+        else if (mod == ".lt") decoded.compareOp = CompareOp::LT;
+        else if (mod == ".le") decoded.compareOp = CompareOp::LE;
+        else if (mod == ".gt") decoded.compareOp = CompareOp::GT;
+        else if (mod == ".ge") decoded.compareOp = CompareOp::GE;
+        else if (mod == ".lo") decoded.compareOp = CompareOp::LO;
+        else if (mod == ".ls") decoded.compareOp = CompareOp::LS;
+        else if (mod == ".hi") decoded.compareOp = CompareOp::HI;
+        else if (mod == ".hs") decoded.compareOp = CompareOp::HS;
+    }
+    
+    if (!ptxInstr.dest.empty())
+    {
+        decoded.dest = parseOperand(ptxInstr.dest);
+    }
+    for (const auto &src : ptxInstr.sources)
+    {
+        decoded.sources.push_back(parseOperand(src));
+    }
+    if (!ptxInstr.predicate.empty())
+    {
+        decoded.hasPredicate = true;
+        if (ptxInstr.predicate[0] == '!')
+        {
+            decoded.predicateValue = false;
+            decoded.predicateIndex = std::stoi(ptxInstr.predicate.substr(2));
+        }
+        else
+        {
+            decoded.predicateValue = true;
+            decoded.predicateIndex = std::stoi(ptxInstr.predicate.substr(1));
+        }
+    }
+    decoded.modifiers = 0;
+    for (const auto &mod : ptxInstr.modifiers)
+    {
+        decoded.modifiers ^= std::hash<std::string>{}(mod);
+    }
+    return decoded;
+}
+
+void PTXParser::Impl::buildSymbolTable()
+{
+    for (auto &func : m_program.functions)
+    {
+        m_program.symbolTable.functions[func.name] = func;
+        for (auto &param : func.parameters)
+        {
+            m_program.symbolTable.parameterSymbols[param.name] = &param;
+        }
     }
 }
+
+std::string PTXParser::Impl::trim(const std::string &str)
+{
+    size_t first = str.find_first_not_of(" \t\n\r\f\v");
+    if (first == std::string::npos)
+        return "";
+    size_t last = str.find_last_not_of(" \t\n\r\f\v");
+    return str.substr(first, last - first + 1);
+}
+
+std::string PTXParser::Impl::extractValue(const std::string &line, const std::string &directive)
+{
+    size_t pos = line.find(directive);
+    if (pos == std::string::npos)
+        return "";
+    std::string value = line.substr(pos + directive.length());
+    return trim(value);
+}
+
+std::vector<std::string> PTXParser::Impl::split(const std::string &str, char delimiter)
+{
+    std::vector<std::string> result;
+    std::stringstream ss(str);
+    std::string item;
+    while (std::getline(ss, item, delimiter))
+    {
+        if (!item.empty())
+        {
+            result.push_back(item);
+        }
+    }
+    return result;
+}
+
+std::vector<std::string> PTXParser::Impl::splitOperands(const std::string &operandsStr)
+{
+    std::vector<std::string> operands;
+    std::string current;
+    int bracketDepth = 0;
+    for (char c : operandsStr)
+    {
+        if (c == '[')
+        {
+            bracketDepth++;
+            current += c;
+        }
+        else if (c == ']')
+        {
+            bracketDepth--;
+            current += c;
+        }
+        else if (c == ',' && bracketDepth == 0)
+        {
+            std::string trimmed = trim(current);
+            if (!trimmed.empty())
+            {
+                operands.push_back(trimmed);
+            }
+            current.clear();
+        }
+        else
+        {
+            current += c;
+        }
+    }
+    std::string trimmed = trim(current);
+    if (!trimmed.empty())
+    {
+        operands.push_back(trimmed);
+    }
+    return operands;
+}
+
+size_t PTXParser::Impl::getTypeSize(const std::string &type)
+{
+    if (type == ".b8" || type == ".s8" || type == ".u8")
+        return 1;
+    if (type == ".b16" || type == ".s16" || type == ".u16" || type == ".f16")
+        return 2;
+    if (type == ".b32" || type == ".s32" || type == ".u32" || type == ".f32")
+        return 4;
+    if (type == ".b64" || type == ".s64" || type == ".u64" || type == ".f64")
+        return 8;
+    return 4;
+}
+
+InstructionTypes PTXParser::Impl::opcodeToInstructionType(const std::string &opcode, const std::vector<std::string>& modifiers)
+{
+    // Helper to check if a modifier exists
+    auto hasModifier = [&modifiers](const std::string& mod) {
+        return std::find(modifiers.begin(), modifiers.end(), mod) != modifiers.end();
+    };
+    
+    // Check for floating-point modifiers
+    bool isF32 = hasModifier(".f32");
+    bool isF64 = hasModifier(".f64");
+    
+    // Floating-point and integer instructions
+    if (opcode == "add") {
+        if (isF32) return InstructionTypes::ADD_F32;
+        if (isF64) return InstructionTypes::ADD_F64;
+        return InstructionTypes::ADD;
+    }
+    if (opcode == "sub") {
+        if (isF32) return InstructionTypes::SUB_F32;
+        if (isF64) return InstructionTypes::SUB_F64;
+        return InstructionTypes::SUB;
+    }
+    if (opcode == "mul") {
+        if (isF32) return InstructionTypes::MUL_F32;
+        if (isF64) return InstructionTypes::MUL_F64;
+        return InstructionTypes::MUL;
+    }
+    if (opcode == "div") {
+        if (isF32) return InstructionTypes::DIV_F32;
+        if (isF64) return InstructionTypes::DIV_F64;
+        return InstructionTypes::DIV;
+    }
+    if (opcode == "neg") {
+        if (isF32) return InstructionTypes::NEG_F32;
+        if (isF64) return InstructionTypes::NEG_F64;
+        return InstructionTypes::NEG;
+    }
+    if (opcode == "abs") {
+        if (isF32) return InstructionTypes::ABS_F32;
+        if (isF64) return InstructionTypes::ABS_F64;
+        return InstructionTypes::ABS;
+    }
+    
+    // Floating-point specific instructions
+    if (opcode == "fma") {
+        if (isF32) return InstructionTypes::FMA_F32;
+        if (isF64) return InstructionTypes::FMA_F64;
+        return InstructionTypes::MAX_INSTRUCTION_TYPE;
+    }
+    if (opcode == "sqrt") {
+        if (isF32) return InstructionTypes::SQRT_F32;
+        if (isF64) return InstructionTypes::SQRT_F64;
+        return InstructionTypes::MAX_INSTRUCTION_TYPE;
+    }
+    if (opcode == "rsqrt") {
+        if (isF32) return InstructionTypes::RSQRT_F32;
+        if (isF64) return InstructionTypes::RSQRT_F64;
+        return InstructionTypes::MAX_INSTRUCTION_TYPE;
+    }
+    if (opcode == "min") {
+        if (isF32) return InstructionTypes::MIN_F32;
+        if (isF64) return InstructionTypes::MIN_F64;
+        return InstructionTypes::MAX_INSTRUCTION_TYPE;
+    }
+    if (opcode == "max") {
+        if (isF32) return InstructionTypes::MAX_F32;
+        if (isF64) return InstructionTypes::MAX_F64;
+        return InstructionTypes::MAX_INSTRUCTION_TYPE;
+    }
+    
+    // Comparison and selection instructions
+    if (opcode == "setp") return InstructionTypes::SETP;
+    if (opcode == "selp") return InstructionTypes::SELP;
+    if (opcode == "set") return InstructionTypes::SET;
+    
+    // Type conversion
+    if (opcode == "cvt") return InstructionTypes::CVT;
+    
+    // Atomic operations
+    if (opcode == "atom") {
+        if (hasModifier(".add")) return InstructionTypes::ATOM_ADD;
+        if (hasModifier(".sub")) return InstructionTypes::ATOM_SUB;
+        if (hasModifier(".exch")) return InstructionTypes::ATOM_EXCH;
+        if (hasModifier(".cas")) return InstructionTypes::ATOM_CAS;
+        if (hasModifier(".min")) return InstructionTypes::ATOM_MIN;
+        if (hasModifier(".max")) return InstructionTypes::ATOM_MAX;
+        if (hasModifier(".inc")) return InstructionTypes::ATOM_INC;
+        if (hasModifier(".dec")) return InstructionTypes::ATOM_DEC;
+        if (hasModifier(".and")) return InstructionTypes::ATOM_AND;
+        if (hasModifier(".or")) return InstructionTypes::ATOM_OR;
+        if (hasModifier(".xor")) return InstructionTypes::ATOM_XOR;
+        return InstructionTypes::MAX_INSTRUCTION_TYPE;
+    }
+    
+    // Integer-only instructions (keep existing logic)
+    if (opcode == "rem")
+        return InstructionTypes::REM;
+    if (opcode == "and")
+        return InstructionTypes::AND;
+    if (opcode == "or")
+        return InstructionTypes::OR;
+    if (opcode == "xor")
+        return InstructionTypes::XOR;
+    if (opcode == "not")
+        return InstructionTypes::NOT;
+    if (opcode == "shl")
+        return InstructionTypes::SHL;
+    if (opcode == "shr")
+        return InstructionTypes::SHR;
+    if (opcode == "bra")
+        return InstructionTypes::BRA;
+    if (opcode == "call")
+        return InstructionTypes::CALL;
+    if (opcode == "ret" || opcode == "exit")
+        return InstructionTypes::RET;
+    if (opcode == "ld")
+        return InstructionTypes::LD;
+    if (opcode == "st")
+        return InstructionTypes::ST;
+    if (opcode == "mov")
+        return InstructionTypes::MOV;
+    if (opcode == "bar" || opcode == "barrier")
+        return InstructionTypes::BARRIER;
+    return InstructionTypes::MAX_INSTRUCTION_TYPE;
+}
+
+Operand PTXParser::Impl::parseOperand(const std::string &str)
+{
+    Operand op = {};
+    op.isAddress = false;
+    op.isIndirect = false;
+    std::string s = trim(str);
+    if (!s.empty() && s.front() == '[' && s.back() == ']')
+    {
+        op.type = OperandType::MEMORY;
+        op.isAddress = true;
+        std::string inner = s.substr(1, s.size() - 2);
+        size_t plusPos = inner.find('+');
+        if (plusPos != std::string::npos)
+        {
+            std::string offsetStr = trim(inner.substr(plusPos + 1));
+            op.address = std::stoull(offsetStr);
+        }
+        else
+        {
+            op.address = 0;
+        }
+        return op;
+    }
+    if (!s.empty() && s[0] == '%')
+    {
+        op.type = OperandType::REGISTER;
+        std::string numPart;
+        for (size_t i = 1; i < s.size(); ++i)
+        {
+            if (std::isdigit(s[i]))
+            {
+                numPart += s[i];
+            }
+        }
+        if (!numPart.empty())
+        {
+            op.registerIndex = std::stoi(numPart);
+        }
+        return op;
+    }
+    if (!s.empty() && s[0] == 'p' && s.size() > 1 && std::isdigit(s[1]))
+    {
+        op.type = OperandType::PREDICATE;
+        op.predicateIndex = std::stoi(s.substr(1));
+        return op;
+    }
+    if (!s.empty() && (std::isdigit(s[0]) || s[0] == '-' || s.find('.') != std::string::npos))
+    {
+        op.type = OperandType::IMMEDIATE;
+        try
+        {
+            op.immediateValue = std::stoll(s);
+        }
+        catch (...)
+        {
+            op.immediateValue = 0;
+        }
+        return op;
+    }
+    op.type = OperandType::UNKNOWN;
+    return op;
+}
+
+// PTXParser公共接口实现
+PTXParser::PTXParser() : pImpl(std::make_unique<Impl>()) {}
+PTXParser::~PTXParser() = default;
+bool PTXParser::parseFile(const std::string &filename) { return pImpl->parseFile(filename); }
+bool PTXParser::parseString(const std::string &ptxCode) { return pImpl->parseString(ptxCode); }
+const std::vector<DecodedInstruction> &PTXParser::getInstructions() const { return pImpl->getInstructions(); }
+const std::string &PTXParser::getErrorMessage() const { return pImpl->getErrorMessage(); }
+const PTXProgram &PTXParser::getProgram() const { return pImpl->getProgram(); }

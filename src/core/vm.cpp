@@ -206,13 +206,21 @@ bool PTXVM::loadAndExecuteProgram(const std::string& filename) {
     // Create a parser and parse the file
     PTXParser parser;
     if (!parser.parseFile(filename)) {
+        std::cerr << "Failed to parse PTX file: " << filename << std::endl;
+        std::cerr << "Error: " << parser.getErrorMessage() << std::endl;
         return false;
     }
     
-    // Initialize executor with parsed instructions
-    if (!pImpl->m_executor->initialize(parser.getInstructions())) {
+    // Get the complete PTX program
+    const PTXProgram& program = parser.getProgram();
+    
+    // Initialize executor with the complete PTX program (not just instructions)
+    if (!pImpl->m_executor->initialize(program)) {
+        std::cerr << "Failed to initialize executor with PTX program" << std::endl;
         return false;
     }
+    
+    std::cout << "Successfully loaded PTX program from: " << filename << std::endl;
     
     // Execute the program
     return pImpl->m_executor->execute();

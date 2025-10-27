@@ -1,0 +1,304 @@
+//
+// PTX Example: SELP (Conditional Select) and CVT (Type Conversion) Instructions
+// Demonstrates sections 7 and 8 of new_features_implementation_guide.md
+//
+
+.version 7.0
+.target sm_50
+.address_size 64
+
+//
+// Test 1: SELP with integer types
+//
+.entry test_selp_integer(
+    .param .u64 result_ptr
+)
+{
+    .reg .s32 %r<10>;
+    .reg .pred %p<3>;
+    .reg .u64 %rd1;
+    
+    ld.param.u64 %rd1, [result_ptr];
+    
+    // Test 1a: Select larger value
+    mov.s32 %r1, 10;
+    mov.s32 %r2, 20;
+    setp.lt.s32 %p1, %r1, %r2;        // %p1 = true (10 < 20)
+    selp.s32 %r3, %r2, %r1, %p1;      // %r3 = 20 (select %r2)
+    
+    // Test 1b: Select smaller value
+    setp.gt.s32 %p2, %r1, %r2;        // %p2 = false (10 > 20)
+    selp.s32 %r4, %r1, %r2, %p2;      // %r4 = 20 (select %r2)
+    
+    // Store results
+    st.global.s32 [%rd1], %r3;        // Expected: 20
+    st.global.s32 [%rd1+4], %r4;      // Expected: 20
+    
+    exit;
+}
+
+//
+// Test 2: SELP with floating-point types
+//
+.entry test_selp_float(
+    .param .u64 result_ptr
+)
+{
+    .reg .f32 %f<10>;
+    .reg .pred %p<3>;
+    .reg .u64 %rd1;
+    
+    ld.param.u64 %rd1, [result_ptr];
+    
+    // Test 2a: Select maximum
+    mov.f32 %f1, 3.14;
+    mov.f32 %f2, 2.71;
+    setp.gt.f32 %p1, %f1, %f2;        // %p1 = true (3.14 > 2.71)
+    selp.f32 %f3, %f1, %f2, %p1;      // %f3 = 3.14
+    
+    // Test 2b: Select minimum
+    setp.lt.f32 %p2, %f1, %f2;        // %p2 = false
+    selp.f32 %f4, %f1, %f2, %p2;      // %f4 = 2.71
+    
+    // Store results
+    st.global.f32 [%rd1], %f3;        // Expected: 3.14
+    st.global.f32 [%rd1+4], %f4;      // Expected: 2.71
+    
+    exit;
+}
+
+//
+// Test 3: CVT float to integer conversions
+//
+.entry test_cvt_float_to_int(
+    .param .u64 result_ptr
+)
+{
+    .reg .f32 %f<10>;
+    .reg .s32 %r<10>;
+    .reg .u32 %u<10>;
+    .reg .u64 %rd1;
+    
+    ld.param.u64 %rd1, [result_ptr];
+    
+    // Test 3a: F32 to S32 (truncation)
+    mov.f32 %f1, 3.14;
+    cvt.s32.f32 %r1, %f1;             // %r1 = 3
+    
+    mov.f32 %f2, -2.71;
+    cvt.s32.f32 %r2, %f2;             // %r2 = -2
+    
+    mov.f32 %f3, 5.99;
+    cvt.s32.f32 %r3, %f3;             // %r3 = 5
+    
+    // Test 3b: F32 to U32
+    mov.f32 %f4, 10.5;
+    cvt.u32.f32 %u1, %f4;             // %u1 = 10
+    
+    mov.f32 %f5, 255.9;
+    cvt.u32.f32 %u2, %f5;             // %u2 = 255
+    
+    // Store results
+    st.global.s32 [%rd1], %r1;        // Expected: 3
+    st.global.s32 [%rd1+4], %r2;      // Expected: -2
+    st.global.s32 [%rd1+8], %r3;      // Expected: 5
+    st.global.u32 [%rd1+12], %u1;     // Expected: 10
+    st.global.u32 [%rd1+16], %u2;     // Expected: 255
+    
+    exit;
+}
+
+//
+// Test 4: CVT integer to float conversions
+//
+.entry test_cvt_int_to_float(
+    .param .u64 result_ptr
+)
+{
+    .reg .f32 %f<10>;
+    .reg .s32 %r<10>;
+    .reg .u32 %u<10>;
+    .reg .u64 %rd1;
+    
+    ld.param.u64 %rd1, [result_ptr];
+    
+    // Test 4a: S32 to F32
+    mov.s32 %r1, 42;
+    cvt.f32.s32 %f1, %r1;             // %f1 = 42.0
+    
+    mov.s32 %r2, -100;
+    cvt.f32.s32 %f2, %r2;             // %f2 = -100.0
+    
+    mov.s32 %r3, 0;
+    cvt.f32.s32 %f3, %r3;             // %f3 = 0.0
+    
+    // Test 4b: U32 to F32
+    mov.u32 %u1, 1000;
+    cvt.f32.u32 %f4, %u1;             // %f4 = 1000.0
+    
+    mov.u32 %u2, 999999;
+    cvt.f32.u32 %f5, %u2;             // %f5 = 999999.0
+    
+    // Store results
+    st.global.f32 [%rd1], %f1;        // Expected: 42.0
+    st.global.f32 [%rd1+4], %f2;      // Expected: -100.0
+    st.global.f32 [%rd1+8], %f3;      // Expected: 0.0
+    st.global.f32 [%rd1+12], %f4;     // Expected: 1000.0
+    st.global.f32 [%rd1+16], %f5;     // Expected: 999999.0
+    
+    exit;
+}
+
+//
+// Test 5: Comprehensive example - Find maximum and classify
+//
+.entry test_comprehensive(
+    .param .u64 data_ptr,
+    .param .f32 threshold
+)
+{
+    .reg .f32 %f<10>;
+    .reg .s32 %r<5>;
+    .reg .pred %p<3>;
+    .reg .u64 %rd1;
+    
+    ld.param.u64 %rd1, [data_ptr];
+    ld.param.f32 %f1, [threshold];
+    
+    // Load two values
+    ld.global.f32 %f2, [%rd1];
+    ld.global.f32 %f3, [%rd1+4];
+    
+    // Find maximum using SETP + SELP
+    setp.gt.f32 %p1, %f2, %f3;        // %p1 = (%f2 > %f3)
+    selp.f32 %f4, %f2, %f3, %p1;      // %f4 = max(%f2, %f3)
+    
+    // Compare with threshold
+    setp.ge.f32 %p2, %f4, %f1;        // %p2 = (%f4 >= threshold)
+    
+    // Classify: 1 if >= threshold, 0 otherwise
+    mov.f32 %f5, 1.0;
+    mov.f32 %f6, 0.0;
+    selp.f32 %f7, %f5, %f6, %p2;      // %f7 = %p2 ? 1.0 : 0.0
+    
+    // Convert to integer for output
+    cvt.s32.f32 %r1, %f7;             // %r1 = (int)%f7
+    
+    // Also convert the max value to integer
+    cvt.s32.f32 %r2, %f4;             // %r2 = (int)%f4
+    
+    // Store results
+    st.global.s32 [%rd1+8], %r1;      // Classification result (0 or 1)
+    st.global.s32 [%rd1+12], %r2;     // Maximum value (as integer)
+    st.global.f32 [%rd1+16], %f4;     // Maximum value (as float)
+    
+    exit;
+}
+
+//
+// Test 6: Clamping values using SETP + SELP
+//
+.entry test_clamp(
+    .param .u64 data_ptr,
+    .param .f32 min_val,
+    .param .f32 max_val
+)
+{
+    .reg .f32 %f<10>;
+    .reg .pred %p<3>;
+    .reg .u64 %rd1;
+    
+    ld.param.u64 %rd1, [data_ptr];
+    ld.param.f32 %f1, [min_val];      // Load min
+    ld.param.f32 %f2, [max_val];      // Load max
+    
+    // Load input value
+    ld.global.f32 %f3, [%rd1];
+    
+    // Clamp to min: if (value < min) value = min
+    setp.lt.f32 %p1, %f3, %f1;        // %p1 = (value < min)
+    selp.f32 %f4, %f1, %f3, %p1;      // %f4 = %p1 ? min : value
+    
+    // Clamp to max: if (value > max) value = max
+    setp.gt.f32 %p2, %f4, %f2;        // %p2 = (value > max)
+    selp.f32 %f5, %f2, %f4, %p2;      // %f5 = %p2 ? max : value
+    
+    // Store clamped result
+    st.global.f32 [%rd1+4], %f5;
+    
+    exit;
+}
+
+//
+// Test 7: Absolute value using SETP + SELP + NEG
+//
+.entry test_abs_using_selp(
+    .param .u64 data_ptr
+)
+{
+    .reg .f32 %f<10>;
+    .reg .pred %p1;
+    .reg .u64 %rd1;
+    
+    ld.param.u64 %rd1, [data_ptr];
+    
+    // Load value
+    ld.global.f32 %f1, [%rd1];
+    
+    // Compute negative
+    neg.f32 %f2, %f1;                 // %f2 = -%f1
+    
+    // Check if original is negative
+    mov.f32 %f3, 0.0;
+    setp.lt.f32 %p1, %f1, %f3;        // %p1 = (%f1 < 0)
+    
+    // Select positive value
+    selp.f32 %f4, %f2, %f1, %p1;      // %f4 = %p1 ? -f1 : f1 = abs(f1)
+    
+    // Store result
+    st.global.f32 [%rd1+4], %f4;
+    
+    exit;
+}
+
+//
+// Test 8: Type conversion chain
+//
+.entry test_conversion_chain(
+    .param .u64 result_ptr,
+    .param .s32 input_value
+)
+{
+    .reg .s32 %r<5>;
+    .reg .f32 %f<5>;
+    .reg .u64 %rd1;
+    
+    ld.param.u64 %rd1, [result_ptr];
+    ld.param.s32 %r1, [input_value];
+    
+    // S32 -> F32 -> multiply -> S32
+    cvt.f32.s32 %f1, %r1;             // Convert to float
+    mov.f32 %f2, 2.5;
+    mul.f32 %f3, %f1, %f2;            // Multiply by 2.5
+    cvt.s32.f32 %r2, %f3;             // Convert back to int (truncate)
+    
+    // Store intermediate and final results
+    st.global.f32 [%rd1], %f1;        // Original as float
+    st.global.f32 [%rd1+4], %f3;      // After multiplication
+    st.global.s32 [%rd1+8], %r2;      // Final as integer
+    
+    exit;
+}
+
+//
+// Usage Example:
+//
+// For test_comprehensive:
+//   float data[5] = {3.5, 4.2, 0, 0, 0};  // First two are inputs
+//   float threshold = 4.0;
+//   cuLaunchKernel(test_comprehensive, ..., data, threshold);
+//   // After execution:
+//   // data[2] = 1 (4.2 >= 4.0, so classification = 1)
+//   // data[3] = 4 (max value as integer)
+//   // data[4] = 4.2 (max value as float)
+//

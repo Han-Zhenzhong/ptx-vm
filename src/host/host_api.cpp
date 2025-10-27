@@ -296,50 +296,64 @@ public:
         unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ,
         unsigned int sharedMemBytes, CUstream hStream, void** kernelParams, void** extra
     ) {
-        if (!m_vm) {
+        if (!m_vm || !m_isProgramLoaded) {
             return CUDA_ERROR_INVALID_VALUE;
         }
 
         try {
-            // For now, we'll just print a message indicating the kernel launch
             std::cout << "Launching kernel with function handle: " << f << std::endl;
             std::cout << "Grid dimensions: " << gridDimX << " x " << gridDimY << " x " << gridDimZ << std::endl;
             std::cout << "Block dimensions: " << blockDimX << " x " << blockDimY << " x " << blockDimZ << std::endl;
 
-            // If kernel parameters are provided, copy them to VM memory
-            if (kernelParams) {
-                std::cout << "Kernel parameters provided:" << std::endl;
-                std::vector<KernelParameter> params;
-                size_t offset = 0;
+            PTXExecutor& executor = m_vm->getExecutor();
+            
+            // 🔧 修复：将 kernelParams 复制到参数内存
+            if (kernelParams != nullptr && executor.hasProgramStructure()) {
+                const PTXProgram& program = executor.getProgram();
                 
-                for (int i = 0; kernelParams[i] != nullptr; i++) {
-                    // In a real implementation, we would:
-                    // 1. Determine the size and type of each parameter
-                    // 2. Copy the parameter data to the appropriate location in VM memory
-                    // 3. Set up the parameter mapping for the kernel
-                    std::cout << "  Parameter " << i << ": " << kernelParams[i] << std::endl;
+                if (!program.functions.empty()) {
+                    const PTXFunction& entryFunc = program.functions[0];
+                    MemorySubsystem& mem = executor.getMemorySubsystem();
                     
-                    // Create a kernel parameter structure
-                    KernelParameter param;
-                    param.devicePtr = reinterpret_cast<CUdeviceptr>(kernelParams[i]);
-                    param.size = sizeof(CUdeviceptr); // Simplified - in reality we'd need to know the actual size
-                    param.offset = offset;
+                    std::cout << "Setting up " << entryFunc.parameters.size() << " kernel parameters..." << std::endl;
                     
-                    params.push_back(param);
-                    offset += param.size;
+                    // 将每个参数复制到参数内存
+                    size_t offset = 0;
+                    for (size_t i = 0; i < entryFunc.parameters.size(); ++i) {
+                        const PTXParameter& param = entryFunc.parameters[i];
+                        
+                        // kernelParams[i] 指向实际的参数数据
+                        if (kernelParams[i] != nullptr) {
+                            std::cout << "  Parameter " << i << " (" << param.name << "): "
+                                      << "type=" << param.type << ", size=" << param.size 
+                                      << ", offset=" << offset << std::endl;
+                            
+                            // 将参数数据复制到参数内存 (基址 0x1000)
+                            const uint8_t* paramData = static_cast<const uint8_t*>(kernelParams[i]);
+                            for (size_t j = 0; j < param.size; ++j) {
+                                mem.write<uint8_t>(MemorySpace::PARAMETER, 
+                                                  0x1000 + offset + j, 
+                                                  paramData[j]);
+                            }
+                        }
+                        
+                        offset += param.size;
+                    }
+                    
+                    std::cout << "Kernel parameters successfully copied to parameter memory" << std::endl;
                 }
-                
-                // Set the kernel parameters in the VM
-                m_vm->setKernelParameters(params);
-                m_vm->setupKernelParameters();
             }
 
-            // In a full implementation, we would:
-            // 1. Set up the execution context with grid/block dimensions
-            // 2. Pass kernel parameters to the VM
-            // 3. Execute the kernel function
+            // 设置grid/block维度
+            // TODO: 传递给 warp scheduler
 
-            return CUDA_SUCCESS;
+            // 执行内核
+            bool success = m_vm->run();
+            return success ? CUDA_SUCCESS : CUDA_ERROR_LAUNCH_FAILED;
+            
+        } catch (const std::exception& e) {
+            std::cerr << "Kernel launch error: " << e.what() << std::endl;
+            return CUDA_ERROR_UNKNOWN;
         } catch (...) {
             return CUDA_ERROR_UNKNOWN;
         }

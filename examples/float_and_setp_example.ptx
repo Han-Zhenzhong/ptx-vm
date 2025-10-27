@@ -1,0 +1,129 @@
+.version 7.0
+.target sm_50
+.address_size 64
+
+// Example demonstrating floating-point instructions and SETP comparison
+
+.entry test_float_and_setp(
+    .param .u64 input_ptr,
+    .param .u64 output_ptr
+)
+{
+    .reg .f32 %f<10>;
+    .reg .s32 %r<10>;
+    .reg .pred %p<5>;
+    .reg .u64 %rd<5>;
+    
+    // Load parameters
+    ld.param.u64 %rd1, [input_ptr];
+    ld.param.u64 %rd2, [output_ptr];
+    
+    // ===== Section 1: Floating-Point Arithmetic =====
+    
+    // Load input values from memory
+    ld.global.f32 %f1, [%rd1];       // Load first float
+    ld.global.f32 %f2, [%rd1+4];     // Load second float
+    
+    // Basic arithmetic operations
+    add.f32 %f3, %f1, %f2;           // Addition: f3 = f1 + f2
+    sub.f32 %f4, %f1, %f2;           // Subtraction: f4 = f1 - f2
+    mul.f32 %f5, %f1, %f2;           // Multiplication: f5 = f1 * f2
+    div.f32 %f6, %f1, %f2;           // Division: f6 = f1 / f2
+    
+    // Advanced floating-point operations
+    fma.f32 %f7, %f1, %f2, %f3;      // Fused multiply-add: f7 = f1 * f2 + f3
+    sqrt.f32 %f8, %f5;               // Square root: f8 = sqrt(f5)
+    neg.f32 %f9, %f1;                // Negation: f9 = -f1
+    abs.f32 %f10, %f9;               // Absolute value: f10 = |f9| = |f1|
+    
+    // Store floating-point results
+    st.global.f32 [%rd2], %f3;       // Store addition result
+    st.global.f32 [%rd2+4], %f4;     // Store subtraction result
+    st.global.f32 [%rd2+8], %f5;     // Store multiplication result
+    st.global.f32 [%rd2+12], %f6;    // Store division result
+    st.global.f32 [%rd2+16], %f7;    // Store FMA result
+    st.global.f32 [%rd2+20], %f8;    // Store sqrt result
+    
+    // ===== Section 2: SETP Comparison Instructions =====
+    
+    // Integer comparisons
+    mov.s32 %r1, 10;
+    mov.s32 %r2, 20;
+    
+    setp.lt.s32 %p1, %r1, %r2;       // p1 = (10 < 20) = true
+    setp.gt.s32 %p2, %r1, %r2;       // p2 = (10 > 20) = false
+    setp.eq.s32 %p3, %r1, %r1;       // p3 = (10 == 10) = true
+    
+    // Floating-point comparisons
+    setp.lt.f32 %p4, %f1, %f2;       // p4 = (f1 < f2)
+    setp.ge.f32 %p5, %f3, %f4;       // p5 = (f3 >= f4)
+    
+    // ===== Section 3: Conditional Execution =====
+    
+    // Use predicates for conditional execution
+    @%p1 mov.s32 %r3, 100;           // Execute if p1 is true
+    @!%p2 mov.s32 %r4, 200;          // Execute if p2 is false
+    
+    // Conditional branch
+    @%p4 bra BRANCH1;
+    mov.s32 %r5, 0;
+    bra END_BRANCH;
+    
+BRANCH1:
+    mov.s32 %r5, 1;
+    
+END_BRANCH:
+    
+    // Store comparison results as integers (1 for true, 0 for false)
+    // Note: In real PTX, we would use selp for this, but it's not implemented yet
+    // For now, we use conditional moves
+    
+    mov.s32 %r6, 0;
+    @%p1 mov.s32 %r6, 1;
+    st.global.s32 [%rd2+24], %r6;    // Store p1 result
+    
+    mov.s32 %r7, 0;
+    @%p2 mov.s32 %r7, 1;
+    st.global.s32 [%rd2+28], %r7;    // Store p2 result
+    
+    mov.s32 %r8, 0;
+    @%p3 mov.s32 %r8, 1;
+    st.global.s32 [%rd2+32], %r8;    // Store p3 result
+    
+    mov.s32 %r9, 0;
+    @%p4 mov.s32 %r9, 1;
+    st.global.s32 [%rd2+36], %r9;    // Store p4 result
+    
+    // ===== Section 4: Combined Example =====
+    
+    // Check if f1 is positive, if so compute sqrt(f1), else compute -f1
+    setp.gt.f32 %p1, %f1, 0.0;       // p1 = (f1 > 0.0)
+    
+    @%p1 sqrt.f32 %f9, %f1;          // If positive: f9 = sqrt(f1)
+    @!%p1 neg.f32 %f9, %f1;          // If negative: f9 = -f1
+    
+    st.global.f32 [%rd2+40], %f9;    // Store final result
+    
+    exit;
+}
+
+/*
+ * Test Case Example:
+ * 
+ * Input:
+ *   input_ptr[0] = 4.0f
+ *   input_ptr[1] = 2.0f
+ * 
+ * Expected Output:
+ *   output_ptr[0]  = 6.0f      // 4.0 + 2.0
+ *   output_ptr[1]  = 2.0f      // 4.0 - 2.0
+ *   output_ptr[2]  = 8.0f      // 4.0 * 2.0
+ *   output_ptr[3]  = 2.0f      // 4.0 / 2.0
+ *   output_ptr[4]  = 14.0f     // 4.0 * 2.0 + 6.0
+ *   output_ptr[5]  = 2.828f    // sqrt(8.0)
+ *   output_ptr[6]  = 1         // p1 = true (10 < 20)
+ *   output_ptr[7]  = 0         // p2 = false (10 > 20)
+ *   output_ptr[8]  = 1         // p3 = true (10 == 10)
+ *   output_ptr[9]  = 0         // p4 = false (4.0 < 2.0)
+ *   output_ptr[10] = 2.0f      // sqrt(4.0) since 4.0 > 0
+ */
