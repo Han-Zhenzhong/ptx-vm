@@ -1,5 +1,8 @@
 # PTX VM CLI 使用方式纠正说明
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 问题分析
 
 当前 CLI 的 `processArguments` 函数存在设计问题：

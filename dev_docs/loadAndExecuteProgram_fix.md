@@ -1,5 +1,8 @@
 # loadAndExecuteProgram 设计问题修复
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 🐛 问题描述
 
 ### 当前调用栈

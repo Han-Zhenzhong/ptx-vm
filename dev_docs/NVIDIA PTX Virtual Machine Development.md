@@ -1,5 +1,8 @@
 # NVIDIA PTX Virtual Machine Development Plan
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 1. Requirements Analysis
 - **Scope Definition**: Determine which PTX instruction set versions to support (specifically PTX 6.1)
 - **Performance Requirements**: Define performance goals (e.g., execution speed relative to real GPU)

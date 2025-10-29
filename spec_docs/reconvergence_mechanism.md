@@ -1,5 +1,8 @@
 # Divergence Handling and Reconvergence Mechanism
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## Overview
 This document describes the divergence handling and reconvergence mechanism implementation in the PTX Virtual Machine. The mechanism supports multiple algorithms for handling branch divergence and ensuring proper thread reconvergence.
 

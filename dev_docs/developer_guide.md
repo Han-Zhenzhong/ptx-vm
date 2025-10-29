@@ -1,5 +1,8 @@
 # Developer Guide for PTX Virtual Machine
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## Introduction
 This document provides essential information for developers working on the PTX Virtual Machine project. It covers code structure, contribution guidelines, build instructions, and other important details to help new contributors get started.
 

@@ -1,5 +1,8 @@
 # NVIDIA PTX Virtual Machine - Next Phase Development Plan
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 1. Introduction
 
 This document outlines the next phase of development for the NVIDIA PTX Virtual Machine, focusing on enhancing parameter passing mechanisms, improving the execution interface, and expanding the VM's capabilities to more closely match real CUDA execution environments.

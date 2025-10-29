@@ -1,5 +1,8 @@
 # PTX 参数传递完整指南：标量 vs 指针
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 🔥 重要更正
 
 **之前的理解（部分错误）**：

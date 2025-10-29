@@ -1,5 +1,8 @@
 # API Documentation
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## Overview
 This document provides detailed API documentation for the PTX Virtual Machine. The API is designed to be simple and consistent, providing access to core functionality while maintaining encapsulation of internal details.
 

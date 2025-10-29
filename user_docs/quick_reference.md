@@ -1,5 +1,8 @@
 # PTX 虚拟机 - 新功能快速参考
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## ✅ 已完成功能
 
 ### 1. 参数传递 ✅

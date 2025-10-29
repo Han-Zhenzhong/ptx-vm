@@ -1,5 +1,8 @@
 # PTX VM 实现总结 - 第4阶段：原子操作
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 概述
 
 本文档总结了按照 `new_features_implementation_guide.md` 第9节实现的原子操作功能。

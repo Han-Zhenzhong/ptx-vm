@@ -2,6 +2,9 @@
 
 本目录包含 PTX VM 项目的用户使用相关文档。
 
+**作者**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**最后更新**: 2025-10-29
+
 ## 📋 目录结构
 
 ### 用户指南

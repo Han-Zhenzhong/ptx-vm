@@ -1,5 +1,8 @@
 # PTX 虚拟机 - 多函数执行指南
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 概述
 
 PTX 虚拟机现在支持完整的多函数执行，包括：

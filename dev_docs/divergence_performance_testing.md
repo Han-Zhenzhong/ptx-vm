@@ -1,5 +1,8 @@
 # Divergence Handling Performance Testing
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 This document describes the performance testing framework and results for the divergence handling implementation in the PTX Virtual Machine.
 
 ## Performance Testing Framework

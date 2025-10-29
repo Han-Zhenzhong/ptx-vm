@@ -1,5 +1,8 @@
 # PTX VM - 第二阶段实现总结
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 概述
 
 本文档总结了第二阶段的实现工作，主要完成了**浮点指令**和 **SETP 比较指令**的实现，这是按照 `new_features_implementation_guide.md` 第 5、6 节进行的。

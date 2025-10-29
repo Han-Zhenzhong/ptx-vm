@@ -1,5 +1,8 @@
 # PTX 参数自动类型推断 - 使用指南
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 🎯 概述
 
 PTX VM CLI 现在支持**自动参数类型推断**！

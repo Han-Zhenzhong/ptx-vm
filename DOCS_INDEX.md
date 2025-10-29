@@ -2,6 +2,9 @@
 
 欢迎来到 PTX VM (Parallel Thread Execution Virtual Machine) 文档中心。
 
+**作者**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**最后更新**: 2025-10-29
+
 ## 📚 文档分类
 
 ### 🚀 [用户文档 (user_docs/)](./user_docs/)

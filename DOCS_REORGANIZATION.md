@@ -1,5 +1,8 @@
 # 文档重组总结
 
+**作者**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**重组日期**: 2025-10-29
+
 ## 📋 重组概述
 
 将原来集中在 `spec_docs/` 目录下的所有文档，按照用途重新分类到三个目录：

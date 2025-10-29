@@ -1,5 +1,8 @@
 # PTX 无参数 Kernel 支持 - 实现总结
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 📋 背景
 
 根据 `docs/ptx_entry_function_without_param.md` 的描述，PTX `.entry` kernel 可以**不带任何参数**。

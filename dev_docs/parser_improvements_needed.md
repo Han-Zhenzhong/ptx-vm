@@ -1,5 +1,8 @@
 # PTX 解析器改进需求分析
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 📋 目录
 - [当前状态](#当前状态)
 - [主要缺失功能](#主要缺失功能)

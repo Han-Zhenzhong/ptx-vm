@@ -1,5 +1,8 @@
 # CUDA Binary Loader Implementation Details
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## Overview
 The CUDA binary loader is responsible for loading and parsing CUDA binaries (FATBIN, CUBIN, and PTX files) for execution in the PTX Virtual Machine. This document provides detailed technical information about the CUDA binary loader implementation.
 

@@ -1,5 +1,8 @@
 # PTX 解析器完整数据结构设计
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 📋 概述
 
 PTX 代码**可以包含多个函数**，包括：

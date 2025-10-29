@@ -1,5 +1,8 @@
 # PTX 虚拟机 - 新功能实现指南
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## ✅ 已完成的改进
 
 ### 1. 参数传递修复（最高优先级） ✅

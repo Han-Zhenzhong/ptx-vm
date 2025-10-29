@@ -1,5 +1,8 @@
 # PTX 虚拟机使用指南
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 目录
 - [简介](#简介)
 - [快速开始](#快速开始)

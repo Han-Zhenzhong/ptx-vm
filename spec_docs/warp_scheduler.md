@@ -1,5 +1,8 @@
 # Warp Scheduler Implementation Details
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## Overview
 The warp scheduler is a critical component of the PTX Virtual Machine, responsible for managing the execution of threads in a SIMT (Single Instruction Multiple Threads) fashion. This document provides detailed technical information about the warp scheduler implementation.
 

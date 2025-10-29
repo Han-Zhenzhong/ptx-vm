@@ -1,5 +1,8 @@
 # PTX 虚拟机 - 全面实现状态分析
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 **分析日期**: 2025-10-26  
 **版本**: 1.0
 

@@ -1,5 +1,8 @@
 # Memory Optimizations Implementation
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## Overview
 This document describes the implementation of memory optimization features in the PTX Virtual Machine. The memory system includes advanced optimizations to improve performance and accurately simulate real GPU memory behavior.
 

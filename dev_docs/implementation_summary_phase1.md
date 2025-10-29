@@ -1,5 +1,8 @@
 # PTX 虚拟机关键功能实现总结
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 **日期**: 2025-10-26  
 **版本**: 实施阶段 1 完成
 

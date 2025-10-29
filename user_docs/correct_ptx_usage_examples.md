@@ -1,5 +1,8 @@
 # PTX VM 正确使用示例
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 本文档展示如何正确使用 PTX VM 执行 PTX 代码。
 
 ## 核心原则

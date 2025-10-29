@@ -1,5 +1,8 @@
 # PTX 参数自动类型推断实现总结
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 📋 实现概述
 
 根据 `docs/param_type_of_ptx_entry_function.md` 的描述，PTX 函数接收的参数**不一定是设备内存地址**，还可以是标量值（`.u32`, `.f32` 等）。本次更新实现了**按参数位置自动推断参数类型**的功能。

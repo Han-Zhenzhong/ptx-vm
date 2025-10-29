@@ -1,5 +1,8 @@
 # PTX 虚拟机 - 多函数执行实现总结
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 🎉 完成的功能
 
 ### ✅ 1. 多函数执行支持

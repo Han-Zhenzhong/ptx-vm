@@ -1,5 +1,8 @@
 # Divergence Handling Implementation Details
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## Overview
 Divergence handling is a critical component of the PTX Virtual Machine, responsible for managing divergent execution paths in the SIMT execution model. This document provides detailed technical information about the divergence handling implementation.
 

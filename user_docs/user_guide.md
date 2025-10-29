@@ -1,13 +1,10 @@
 # User Guide for PTX Virtual Machine
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Contact**: zhenzhong.han@qq.com  
+**Last Updated**: 2025-10-29
+
 ## Introduction
-This document provides essential information for end-users and application developers working with the PTX Virtual Machine. It covers installation, basic usage, command reference, and troubleshooting.
-
-The PTX Virtual Machine project is hosted on gitee at: https://gitee.com/hanzhenzhong/ptx-vm
-
-**Author**: Zhenzhong Han <zhenzhong.han@qq.com>
-
-## Installation
 
 ### Prerequisites
 - CMake 3.14+

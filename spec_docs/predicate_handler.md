@@ -1,5 +1,8 @@
 # Predicate Handling Implementation
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## Overview
 This document describes the implementation of the predicate handler component in the PTX Virtual Machine. The predicate handler is responsible for managing conditional execution of instructions, implementing the SIMT execution model, and supporting divergence and reconvergence of warps.
 

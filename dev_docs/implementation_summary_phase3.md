@@ -1,5 +1,8 @@
 # PTX VM - 第三阶段实现总结
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 概述
 
 本文档总结了第三阶段的实现工作，主要完成了 **SELP 条件选择指令**和 **CVT 类型转换指令**的实现，这是按照 `new_features_implementation_guide.md` 第 7、8 节进行的。

@@ -1,5 +1,8 @@
 # PTX-VM 头文件组织结构建议
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 当前状态分析
 
 ### 项目根目录 `include/` (公共API)

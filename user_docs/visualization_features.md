@@ -1,5 +1,8 @@
 # Visualization Features Implementation
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## Overview
 This document describes the implementation of basic visualization features in the PTX Virtual Machine. These features provide insights into the execution of PTX programs, including warp execution visualization, memory access patterns, and performance counter displays.
 

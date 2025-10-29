@@ -2,6 +2,9 @@
 
 本目录包含 PTX (Parallel Thread Execution) 的基础知识和规范相关文档。
 
+**作者**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**最后更新**: 2025-10-29
+
 ## 📋 目录结构
 
 ### PTX 核心概念

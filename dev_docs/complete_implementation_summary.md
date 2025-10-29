@@ -1,5 +1,8 @@
 # PTX VM 新功能实现完整总结（第1-4阶段）
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## 项目概览
 
 本文档总结了按照 `new_features_implementation_guide.md` 文档第1-10节完成的所有新功能实现。

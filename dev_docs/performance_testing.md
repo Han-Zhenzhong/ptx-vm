@@ -1,5 +1,8 @@
 # Performance Testing Framework
 
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Last Updated**: 2025-10-29
+
 ## Overview
 This document describes the performance testing framework for the PTX Virtual Machine. The framework provides tools for measuring and comparing the performance of different components and algorithms used in the VM. It includes benchmarks for core execution, memory subsystem, divergence handling, and other critical components.
 
