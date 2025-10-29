@@ -5,7 +5,6 @@
 #include <iomanip>
 #include <cstring>
 #include "vm.hpp"
-#include "cuda_binary_loader.hpp"
 #include "execution/executor.hpp"  // Include for PTXExecutor complete type
 #include "registers/register_bank.hpp"  // Include for RegisterBank complete type
 #include "instruction_types.hpp"  // Include for InstructionTypes enum
@@ -29,12 +28,21 @@ public:
 
     // Load a program from file
     bool loadProgram(const std::string& filename) {
+        if (!m_vm) {
+            std::cerr << "VM not initialized" << std::endl;
+            return false;
+        }
+        
         m_programFilename = filename;
-        CudaBinaryLoader loader;
-        bool success = loader.loadBinary(filename);
+        
+        // Use PTXVM's loadProgram to directly load PTX files
+        bool success = m_vm->loadProgram(filename);
         
         if (success) {
             m_isProgramLoaded = true;
+            std::cout << "Program loaded successfully: " << filename << std::endl;
+        } else {
+            std::cerr << "Failed to load PTX program: " << filename << std::endl;
         }
         
         return success;

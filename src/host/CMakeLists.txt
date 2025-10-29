@@ -2,7 +2,6 @@
 add_library(host STATIC
     host_api.cpp
     cli_interface.cpp
-    cuda_binary_loader.cpp
 )
 
 # Include headers

@@ -6,15 +6,7 @@
 #include <cctype>
 #include <algorithm>
 
-// PTXInstruction - 临时结构用于解析过程
-struct PTXInstruction
-{
-    std::string predicate;
-    std::string opcode;
-    std::vector<std::string> modifiers;
-    std::string dest;
-    std::vector<std::string> sources;
-};
+// PTXInstruction is defined in instruction_types.hpp (included via parser.hpp)
 
 // PTXParser::Impl - 私有实现类
 class PTXParser::Impl

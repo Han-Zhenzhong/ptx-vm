@@ -1,5 +1,4 @@
 #include "gtest/gtest.h"
-#include "cuda_binary_loader.hpp"
 #include "vm.hpp"
 #include "memory_optimizer.hpp"
 #include "performance_counters.hpp"
@@ -8,16 +7,12 @@
 class MemoryPerformanceTest : public ::testing::Test {
 protected:
     std::unique_ptr<VM> m_vm;
-    std::unique_ptr<CudaBinaryLoader> m_loader;
     std::unique_ptr<MemoryOptimizerFramework> m_memoryOptimizer;
     
     void SetUp() override {
         // Initialize VM components
         m_vm = std::make_unique<VM>();
         ASSERT_TRUE(m_vm->initialize());
-        
-        // Initialize CUDA binary loader
-        m_loader = std::make_unique<CudaBinaryLoader>();
         ASSERT_TRUE(m_loader->initialize());
         
         // Initialize memory optimizer
