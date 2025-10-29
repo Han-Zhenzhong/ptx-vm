@@ -152,36 +152,6 @@ void PTXVM::mapKernelParametersToRegisters() {
     std::cout << "Mapped " << pImpl->m_kernelParameters.size() << " kernel parameters to registers" << std::endl;
 }
 
-bool PTXVM::launchKernel() {
-    // Set up execution context with kernel launch parameters
-    std::cout << "Launching kernel: " << pImpl->m_currentKernelName << std::endl;
-    std::cout << "Grid dimensions: " << pImpl->m_kernelLaunchParams.gridDimX << " x " 
-              << pImpl->m_kernelLaunchParams.gridDimY << " x " << pImpl->m_kernelLaunchParams.gridDimZ << std::endl;
-    std::cout << "Block dimensions: " << pImpl->m_kernelLaunchParams.blockDimX << " x " 
-              << pImpl->m_kernelLaunchParams.blockDimY << " x " << pImpl->m_kernelLaunchParams.blockDimZ << std::endl;
-    std::cout << "Shared memory: " << pImpl->m_kernelLaunchParams.sharedMemBytes << " bytes" << std::endl;
-    std::cout << "Parameters: " << pImpl->m_kernelParameters.size() << " parameters" << std::endl;
-    
-    // Set up kernel parameters in VM memory
-    if (!pImpl->m_kernelParameters.empty()) {
-        if (!setupKernelParameters()) {
-            std::cerr << "Failed to set up kernel parameters" << std::endl;
-            return false;
-        }
-    }
-    
-    // Execute the kernel
-    bool result = pImpl->m_executor->execute();
-    
-    if (result) {
-        std::cout << "Kernel execution completed successfully" << std::endl;
-    } else {
-        std::cerr << "Kernel execution failed" << std::endl;
-    }
-    
-    return result;
-}
-
 bool PTXVM::initialize() {
     // Initialize the executor with register bank and memory subsystem
     pImpl->m_executor = std::make_unique<PTXExecutor>(*pImpl->m_registerBank, *pImpl->m_memorySubsystem, *pImpl->m_performanceCounters);
@@ -202,7 +172,9 @@ bool PTXVM::initialize() {
     return true;
 }
 
-bool PTXVM::loadAndExecuteProgram(const std::string& filename) {
+bool PTXVM::loadProgram(const std::string& filename) {
+    pImpl->m_programFilename = filename;
+
     // Create a parser and parse the file
     PTXParser parser;
     if (!parser.parseFile(filename)) {
@@ -219,11 +191,12 @@ bool PTXVM::loadAndExecuteProgram(const std::string& filename) {
         std::cerr << "Failed to initialize executor with PTX program" << std::endl;
         return false;
     }
-    
+
+    pImpl->m_isProgramLoaded = true;
     std::cout << "Successfully loaded PTX program from: " << filename << std::endl;
     
     // Execute the program
-    return pImpl->m_executor->execute();
+    return true;
 }
 
 bool PTXVM::run() {
@@ -349,24 +322,12 @@ const std::map<CUdeviceptr, size_t>& PTXVM::getMemoryAllocations() const {
     return pImpl->m_memoryAllocations;
 }
 
-bool PTXVM::loadProgram(const std::string& filename) {
-    // Store the filename for later use
-    pImpl->m_programFilename = filename;
-    pImpl->m_isProgramLoaded = true;
-    
-    // In a real implementation, this would:
-    // 1. Load the PTX file
-    // 2. Parse the PTX code
-    // 3. Convert PTX instructions to internal representation
-    // 4. Initialize the executor with the instructions
-    // For now, we'll just mark the program as loaded
-    
-    std::cout << "Loading program: " << filename << std::endl;
-    return true;
-}
-
 bool PTXVM::isProgramLoaded() const {
     return pImpl->m_isProgramLoaded;
+}
+
+bool PTXVM::hasProgram() const {
+    return pImpl->m_isProgramLoaded && pImpl->m_executor != nullptr;
 }
 
 RegisterBank& PTXVM::getRegisterBank() {

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <cstring>
 #include "host_api.hpp"
 
 // Private implementation class
@@ -60,15 +61,50 @@ public:
             // Load the specified program
             loadProgram(argv[1]);
             
-            // If there are more arguments, they might be kernel parameters
+            // If there are more arguments, display warning about correct usage
             if (argc > 2) {
-                // Store kernel parameters
-                for (int i = 2; i < argc; ++i) {
-                    m_kernelParams.push_back(argv[i]);
-                }
+                printMessage("");
+                printMessage("=================================================================");
+                printMessage("NOTICE: Additional command-line arguments are ignored.");
+                printMessage("=================================================================");
+                printMessage("");
+                printMessage("PTX parameters are automatically typed from kernel signature!");
+                printMessage("");
+                printMessage("Two types of parameters:");
+                printMessage("  1. POINTER (.u64) - device memory addresses (need 'alloc')");
+                printMessage("  2. SCALAR (.u32, .f32, etc.) - direct values (no alloc)");
+                printMessage("");
+                printMessage("Correct workflow:");
+                printMessage("  1. For pointer params:       alloc <size>");
+                printMessage("  2. Fill pointer data:        fill <address> <count> <values...>");
+                printMessage("  3. Launch with mixed params: launch <kernel> <param1> <param2> ...");
+                printMessage("");
+                printMessage("Example 1 - Pointers only:");
+                printMessage("  > alloc 32                    # Returns 0x10000");
+                printMessage("  > fill 0x10000 8 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0");
+                printMessage("  > alloc 32                    # Returns 0x10020");
+                printMessage("  > launch vecAdd 0x10000 0x10020");
+                printMessage("");
+                printMessage("Example 2 - Mixed (pointers + scalars):");
+                printMessage("  > alloc 4096                  # Returns 0x10000");
+                printMessage("  > fill 0x10000 ...");
+                printMessage("  > launch scaleArray 0x10000 1024 2.5");
+                printMessage("     kernel signature: (.param .u64 ptr, .param .u32 N, .param .f32 scale)");
+                printMessage("     Auto-converts:    0x10000→ptr, 1024→u32, 2.5→f32");
+                printMessage("");
+                printMessage("See: docs/ptx_entry_function_complete_guide.md");
+                printMessage("=================================================================");
+                printMessage("");
             }
         } else {
             printMessage("No program specified. Use 'load <filename>' to load a PTX program.");
+            printMessage("");
+            printMessage("After loading, use interactive commands to:");
+            printMessage("  - Allocate memory: alloc <size>");
+            printMessage("  - Fill data: fill <address> <count> <values...>");
+            printMessage("  - Launch kernel: launch <kernel_name> <addr1> <addr2> ...");
+            printMessage("");
+            printMessage("Type 'help' for more information.");
         }
     }
 
@@ -96,18 +132,6 @@ public:
             helpCommand(args);
         } else if (cmd == "load") {
             loadCommand(args);
-        } else if (cmd == "run") {
-            runCommand(args);
-        } else if (cmd == "step") {
-            stepCommand(args);
-        } else if (cmd == "break" || cmd == "b") {
-            breakCommand(args);
-        } else if (cmd == "watch" || cmd == "w") {
-            watchCommand(args);
-        } else if (cmd == "register" || cmd == "reg" || cmd == "r") {
-            registerCommand(args);
-        } else if (cmd == "memory" || cmd == "mem" || cmd == "m") {
-            memoryCommand(args);
         } else if (cmd == "alloc") {
             allocCommand(args);
         } else if (cmd == "memcpy") {
@@ -118,12 +142,14 @@ public:
             fillCommand(args);
         } else if (cmd == "launch") {
             launchCommand(args);
+        } else if (cmd == "break" || cmd == "b") {
+            breakCommand(args);
+        } else if (cmd == "watch" || cmd == "w") {
+            watchCommand(args);
         } else if (cmd == "profile") {
             profileCommand(args);
         } else if (cmd == "dump") {
             dumpCommand(args);
-        } else if (cmd == "list" || cmd == "l") {
-            listCommand(args);
         } else if (cmd == "quit" || cmd == "exit" || cmd == "q") {
             quitCommand(args);
             return true; // Exit the CLI
@@ -133,12 +159,6 @@ public:
             versionCommand(args);
         } else if (cmd == "info") {
             infoCommand(args);
-        } else if (cmd == "disassemble" || cmd == "disas") {
-            disassembleCommand(args);
-        } else if (cmd == "threads") {
-            threadsCommand(args);
-        } else if (cmd == "warps") {
-            warpsCommand(args);
         } else if (cmd == "visualize" || cmd == "vis") {
             visualizeCommand(args);
         } else {
@@ -156,29 +176,20 @@ public:
             printMessage("Available commands:");
             printMessage("  help (?, h)              - Show this help message");
             printMessage("  load <filename>         - Load a PTX program");
-            printMessage("  run                     - Run the loaded program");
-            printMessage("  step (s) [count]       - Step through instructions");
-            printMessage("  break (b) <address>    - Set a breakpoint");
-            printMessage("  watch (w) <address>    - Set a watchpoint");
-            printMessage("  register (reg, r)      - Display register information");
-            printMessage("  memory (mem, m)        - Display memory information");
             printMessage("  alloc <size>           - Allocate memory");
             printMessage("  memcpy <dest> <src> <size> - Copy memory");
             printMessage("  write <address> <value> - Write a value to memory");
             printMessage("  fill <address> <count> <value1> [value2] ... - Fill memory with values");
-            printMessage("  loadfile <address> <file> <size> - Load file data into memory");
-            printMessage("  launch <kernel> [params] - Launch a kernel with parameters");
+            printMessage("  launch <kernel> <params...> - Launch kernel (auto-detects param types from PTX)");
+            printMessage("  break (b) <address>    - Set a breakpoint");
+            printMessage("  watch (w) <address>    - Set a watchpoint");
             printMessage("  profile <filename>     - Start profiling");
             printMessage("  dump                    - Dump execution statistics");
-            printMessage("  list (l)               - List loaded program disassembly");
             printMessage("  visualize (vis) <type>  - Display visualizations (warp, memory, performance)");
             printMessage("  quit (exit, q)         - Quit the VM");
             printMessage("  clear (cls)            - Clear the screen");
             printMessage("  version                 - Show version information");
             printMessage("  info                    - Show current VM information");
-            printMessage("  disassemble (disas)     - Disassemble loaded program");
-            printMessage("  threads                 - Display thread status");
-            printMessage("  warps                   - Display warp status");
             printMessage("");
             printMessage("For detailed help on a specific command, use 'help <command>'.");
         } else {
@@ -191,29 +202,6 @@ public:
             } else if (cmd == "load") {
                 printMessage("load <filename> - Load a PTX program from disk");
                 printMessage("Example: load examples/simple_math_example.ptx");
-            } else if (cmd == "run") {
-                printMessage("run - Run the loaded program from the beginning");
-            } else if (cmd == "step" || cmd == "s") {
-                printMessage("step [count] - Execute one or more instructions");
-                printMessage("Examples:");
-                printMessage("  step          - Execute one instruction");
-                printMessage("  step 10       - Execute 10 instructions");
-            } else if (cmd == "break" || cmd == "b") {
-                printMessage("break <address> - Set a breakpoint at the specified address");
-                printMessage("Example: break 0x100");
-            } else if (cmd == "watch" || cmd == "w") {
-                printMessage("watch <address> - Set a watchpoint at the specified address");
-                printMessage("Example: watch 0x1000");
-            } else if (cmd == "register" || cmd == "reg" || cmd == "r") {
-                printMessage("register [all|predicate|pc] - Display register information");
-                printMessage("Examples:");
-                printMessage("  register          - Display general purpose registers");
-                printMessage("  register all      - Display all registers");
-                printMessage("  register predicate - Display predicate registers");
-                printMessage("  register pc       - Display program counter");
-            } else if (cmd == "memory" || cmd == "mem" || cmd == "m") {
-                printMessage("memory <address> [size] - Display memory contents");
-                printMessage("Example: memory 0x1000 256");
             } else if (cmd == "alloc") {
                 printMessage("alloc <size> - Allocate memory in the VM");
                 printMessage("Example: alloc 1024");
@@ -228,22 +216,58 @@ public:
                 printMessage("fill <address> <count> <value1> [value2] ... - Fill memory with values");
                 printMessage("Example: fill 0x10000 4 1 2 3 4");
                 printMessage("This command writes multiple byte values starting at the specified address.");
-            } else if (cmd == "loadfile") {
-                printMessage("loadfile <address> <file> <size> - Load file data into memory");
-                printMessage("Example: loadfile 0x10000 data.bin 1024");
-                printMessage("This command loads data from a file into VM memory at the specified address.");
             } else if (cmd == "launch") {
-                printMessage("launch <kernel> [params] - Launch a kernel with parameters");
-                printMessage("Example: launch myKernel 0x1000 0x2000");
-                printMessage("This command launches a kernel with the specified parameters.");
-                printMessage("Each parameter should be a memory address where the parameter data is stored.");
+                printMessage("launch <kernel_name> [param1] [param2] ... - Launch a kernel");
+                printMessage("");
+                printMessage("AUTOMATIC TYPE DETECTION:");
+                printMessage("Parameters are automatically typed based on the PTX kernel signature.");
+                printMessage("  - No parameters: Kernel accepts no arguments");
+                printMessage("  - Pointer types (.u64): Pass device address (e.g., 0x10000)");
+                printMessage("  - Scalar types (.u32, .f32, etc.): Pass value directly");
+                printMessage("");
+                printMessage("Example 0 - No parameters:");
+                printMessage("  .entry noArgKernel()");
+                printMessage("  > launch noArgKernel");
+                printMessage("  (No memory allocation needed)");
+                printMessage("");
+                printMessage("Example 1 - Pointers only (vector addition):");
+                printMessage("  .entry vecAdd(.param .u64 A, .param .u64 B, .param .u64 C)");
+                printMessage("  > alloc 32");
+                printMessage("    Returns: 0x10000");
+                printMessage("  > alloc 32");
+                printMessage("    Returns: 0x10020");
+                printMessage("  > alloc 32");
+                printMessage("    Returns: 0x10040");
+                printMessage("  > fill 0x10000 8 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0");
+                printMessage("  > launch vecAdd 0x10000 0x10020 0x10040");
+                printMessage("");
+                printMessage("Example 2 - Mixed pointers and scalars (array scaling):");
+                printMessage("  .entry scaleArray(.param .u64 data, .param .u32 N, .param .f32 scale)");
+                printMessage("  > alloc 4096");
+                printMessage("    Returns: 0x10000");
+                printMessage("  > fill 0x10000 1024 ...");
+                printMessage("  > launch scaleArray 0x10000 1024 2.5");
+                printMessage("    Parameter [0]: device address 0x10000 (pointer)");
+                printMessage("    Parameter [1]: value 1024 (scalar .u32)");
+                printMessage("    Parameter [2]: value 2.5 (scalar .f32)");
+                printMessage("");
+                printMessage("Example 3 - Pure scalars (computation):");
+                printMessage("  .entry compute(.param .u32 a, .param .u32 b, .param .f32 factor)");
+                printMessage("  > launch compute 100 200 1.5");
+                printMessage("");
+                printMessage("The VM reads the PTX kernel signature and automatically converts");
+                printMessage("string arguments to the correct type (u32, f32, u64 pointer, etc.).");
+            } else if (cmd == "break" || cmd == "b") {
+                printMessage("break <address> - Set a breakpoint at the specified address");
+                printMessage("Example: break 0x100");
+            } else if (cmd == "watch" || cmd == "w") {
+                printMessage("watch <address> - Set a watchpoint at the specified address");
+                printMessage("Example: watch 0x1000");
             } else if (cmd == "profile") {
                 printMessage("profile <filename> - Start profiling session");
                 printMessage("Example: profile performance.csv");
             } else if (cmd == "dump") {
                 printMessage("dump - Dump execution statistics and analysis");
-            } else if (cmd == "list" || cmd == "l") {
-                printMessage("list - List loaded program disassembly");
             } else if (cmd == "visualize" || cmd == "vis") {
                 printMessage("visualize <type> - Display visualizations");
                 printMessage("Types:");
@@ -262,12 +286,6 @@ public:
                 printMessage("version - Show version information");
             } else if (cmd == "info") {
                 printMessage("info - Show current VM information");
-            } else if (cmd == "disassemble" || cmd == "disas") {
-                printMessage("disassemble - Disassemble loaded program");
-            } else if (cmd == "threads") {
-                printMessage("threads - Display thread status");
-            } else if (cmd == "warps") {
-                printMessage("warps - Display warp status");
             } else {
                 std::ostringstream oss;
                 oss << "No detailed help available for command: " << cmd;
@@ -287,7 +305,7 @@ public:
         std::string filename = args[0];
         
         // Load and execute the program
-        if (m_vm->loadAndExecuteProgram(filename)) {
+        if (m_vm->loadProgram(filename)) {
             m_loadedProgram = filename;
             printMessage("Program loaded successfully.");
             
@@ -301,7 +319,7 @@ public:
     // Load a program
     void loadProgram(const std::string& filename) {
         // Load and execute the program
-        if (m_vm->loadAndExecuteProgram(filename)) {
+        if (m_vm->loadProgram(filename)) {
             m_loadedProgram = filename;
             
             // Reset execution state
@@ -313,90 +331,6 @@ public:
     void resetExecutionState() {
         m_currentPC = 0;
         m_executing = false;
-    }
-
-    // Run command - execute the loaded program
-    void runCommand(const std::vector<std::string>& args) {
-        if (m_loadedProgram.empty()) {
-            printError("No program loaded. Use 'load' to load a program first.");
-            return;
-        }
-        
-        // Reset performance counters
-        m_vm->getPerformanceCounters().reset();
-        
-        // Reset execution state
-        resetExecutionState();
-        
-        // Start profiling if requested
-        if (args.size() >= 1 && args[0] == "--profile") {
-            m_vm->startProfiling("default_profile.csv");
-        }
-        
-        printMessage("Starting program execution...");
-        
-        // Execute the program
-        bool result = m_vm->run();
-        
-        if (result) {
-            printMessage("Program completed successfully.");
-            
-            // Stop profiling if it was started
-            if (args.size() >= 1 && args[0] == "--profile") {
-                m_vm->stopProfiling();
-            }
-            
-            // Print performance statistics
-            m_vm->dumpExecutionStats();
-        } else {
-            printError("Program execution failed.");
-        }
-    }
-
-    // Step command - execute one instruction
-    void stepCommand(const std::vector<std::string>& args) {
-        if (m_loadedProgram.empty()) {
-            printError("No program loaded. Use 'load' to load a program first.");
-            return;
-        }
-        
-        // Determine how many steps to take
-        size_t steps = 1;
-        if (!args.empty()) {
-            try {
-                steps = std::stoul(args[0]);
-            } catch (...) {
-                printError("Invalid step count. Using default of 1.");
-                steps = 1;
-            }
-        }
-        
-        // Execute the steps
-        for (size_t i = 0; i < steps; ++i) {
-            // In real implementation, this would execute a single instruction
-            // For now, we'll just increment PC
-            
-            // Display instruction before executing
-            if (i == 0 || i % 10 == 0) {
-                // Display current instruction
-                // This would show disassembled instruction in real implementation
-                printMessage("Executing instruction... (placeholder)");
-            }
-            
-            // Increment PC
-            // In real implementation, this would be handled by the executor
-            m_currentPC++;
-        }
-        
-        // Update execution state
-        updateExecutionState();
-        
-        // Print number of steps executed
-        if (steps > 1) {
-            std::ostringstream oss;
-            oss << "Executed " << steps << " instructions.";
-            printMessage(oss.str());
-        }
     }
 
     // Break command - set a breakpoint
@@ -446,70 +380,6 @@ public:
             } else {
                 printError("Failed to set watchpoint.");
             }
-        } catch (...) {
-            printError("Invalid address format. Use hexadecimal (e.g., 0x1000).");
-        }
-    }
-
-    // Register command - display/register information
-    void registerCommand(const std::vector<std::string>& args) {
-        if (args.empty() || args[0] == "all") {
-            // Display all registers
-            // In real implementation, this would get register values from the VM
-            printMessage("Register Information (placeholder):", false);
-            printMessage("-----------------------------");
-            printMessage("This is a placeholder. Real implementation would show actual register values.");
-        } else if (args[0] == "predicate") {
-            // Display predicate registers
-            // In real implementation, this would get predicate state
-            printMessage("Predicate Registers (placeholder):", false);
-            printMessage("-------------------------------");
-            printMessage("This is a placeholder. Real implementation would show predicate register values.");
-        } else if (args[0] == "pc") {
-            // Display program counters
-            printMessage("Program Counters (placeholder):", false);
-            printMessage("------------------------------");
-            
-            std::ostringstream oss;
-            oss << "Current PC: 0x" << std::hex << m_currentPC << std::dec;
-            printMessage(oss.str());
-            
-            // In real implementation, this would show warp/thread PCs
-            printMessage("Warp 0 PC: 0x100 (example)");
-            printMessage("Thread 0 PC: 0x100 (example)");
-        } else {
-            printError("Invalid register type. Use 'help register' for options.");
-        }
-    }
-
-    // Memory command - display memory information
-    void memoryCommand(const std::vector<std::string>& args) {
-        if (args.empty()) {
-            printError("Usage: memory <address> [size]");
-            return;
-        }
-        
-        try {
-            // Parse address
-            uint64_t address = std::stoull(args[0], nullptr, 0);
-            
-            // Parse size if provided
-            size_t size = 16;
-            if (args.size() > 1) {
-                size_t parsedSize = std::stoul(args[1]);
-                if (parsedSize > 0 && parsedSize <= 256) {
-                    size = parsedSize;
-                } else {
-                    printError("Memory size must be between 1 and 256.");
-                    size = 16;
-                }
-            }
-            
-            // Read memory
-            // In real implementation, this would read from the VM's memory subsystem
-            printMessage("Memory Contents (placeholder):", false);
-            printMessage("-------------------------------");
-            printMessage("This is a placeholder. Real implementation would show memory contents.");
         } catch (...) {
             printError("Invalid address format. Use hexadecimal (e.g., 0x1000).");
         }
@@ -723,78 +593,67 @@ public:
         }
     }
 
-    // Loadfile command - load file data into memory
-    void loadfileCommand(const std::vector<std::string>& args) {
-        if (args.size() < 3) {
-            printError("Usage: loadfile <address> <file> <size>");
-            printError("Example: loadfile 0x10000 data.bin 1024");
-            return;
-        }
-        
+    // Helper function to parse parameter value based on PTX type
+    bool parseParameterValue(const std::string& valueStr, const PTXParameter& paramDef, 
+                            std::vector<uint8_t>& paramData) {
         try {
-            // Parse address
-            uint64_t address = std::stoull(args[0], nullptr, 0);
+            paramData.resize(paramDef.size);
             
-            // Get file path
-            std::string filePath = args[1];
-            
-            // Parse size
-            size_t size = std::stoull(args[2], nullptr, 0);
-            
-            // Validate size
-            if (size == 0) {
-                printError("Size must be greater than 0.");
-                return;
+            // Check if it's a pointer type (.u64 or .s64)
+            if (paramDef.isPointer) {
+                // Parse as device memory address
+                uint64_t addr = std::stoull(valueStr, nullptr, 0);
+                std::memcpy(paramData.data(), &addr, sizeof(uint64_t));
+                return true;
             }
             
-            if (size > 1024 * 1024) { // Limit to 1MB
-                printError("Size must be less than 1MB.");
-                return;
+            // Handle scalar types based on PTX type
+            if (paramDef.type == ".u32") {
+                uint32_t value = std::stoul(valueStr, nullptr, 0);
+                std::memcpy(paramData.data(), &value, sizeof(uint32_t));
+                return true;
+            } else if (paramDef.type == ".s32") {
+                int32_t value = std::stoi(valueStr, nullptr, 0);
+                std::memcpy(paramData.data(), &value, sizeof(int32_t));
+                return true;
+            } else if (paramDef.type == ".f32") {
+                float value = std::stof(valueStr);
+                std::memcpy(paramData.data(), &value, sizeof(float));
+                return true;
+            } else if (paramDef.type == ".f64") {
+                double value = std::stod(valueStr);
+                std::memcpy(paramData.data(), &value, sizeof(double));
+                return true;
+            } else if (paramDef.type == ".u64") {
+                uint64_t value = std::stoull(valueStr, nullptr, 0);
+                std::memcpy(paramData.data(), &value, sizeof(uint64_t));
+                return true;
+            } else if (paramDef.type == ".s64") {
+                int64_t value = std::stoll(valueStr, nullptr, 0);
+                std::memcpy(paramData.data(), &value, sizeof(int64_t));
+                return true;
+            } else if (paramDef.type == ".u16") {
+                uint16_t value = static_cast<uint16_t>(std::stoul(valueStr, nullptr, 0));
+                std::memcpy(paramData.data(), &value, sizeof(uint16_t));
+                return true;
+            } else if (paramDef.type == ".s16") {
+                int16_t value = static_cast<int16_t>(std::stoi(valueStr, nullptr, 0));
+                std::memcpy(paramData.data(), &value, sizeof(int16_t));
+                return true;
+            } else if (paramDef.type == ".u8") {
+                uint8_t value = static_cast<uint8_t>(std::stoul(valueStr, nullptr, 0));
+                paramData[0] = value;
+                return true;
+            } else if (paramDef.type == ".s8") {
+                int8_t value = static_cast<int8_t>(std::stoi(valueStr, nullptr, 0));
+                paramData[0] = value;
+                return true;
             }
             
-            // Open file
-            std::ifstream file(filePath, std::ios::binary);
-            if (!file.is_open()) {
-                std::ostringstream oss;
-                oss << "Failed to open file: " << filePath;
-                printError(oss.str());
-                return;
-            }
-            
-            // Read file data
-            std::vector<uint8_t> data(size);
-            file.read(reinterpret_cast<char*>(data.data()), size);
-            size_t bytesRead = file.gcount();
-            file.close();
-            
-            if (bytesRead == 0) {
-                printError("Failed to read data from file or file is empty.");
-                return;
-            }
-            
-            if (bytesRead < size) {
-                std::ostringstream oss;
-                oss << "Warning: Only read " << bytesRead << " bytes from file, expected " << size << " bytes.";
-                printMessage(oss.str());
-            }
-            
-            // Write data to memory
-            HostAPI hostAPI;
-            CUresult result = hostAPI.cuMemcpyHtoD(address, data.data(), bytesRead);
-            
-            if (result == CUDA_SUCCESS) {
-                std::ostringstream oss;
-                oss << "Loaded " << bytesRead << " bytes from " << filePath 
-                    << " to address 0x" << std::hex << address << std::dec;
-                printMessage(oss.str());
-            } else {
-                std::ostringstream oss;
-                oss << "Failed to load file data to address 0x" << std::hex << address << std::dec 
-                    << ". Error code: " << result;
-                printError(oss.str());
-            }
+            // Unknown type
+            return false;
         } catch (...) {
-            printError("Invalid address, file path, or size format.");
+            return false;
         }
     }
 
@@ -802,37 +661,157 @@ public:
     void launchCommand(const std::vector<std::string>& args) {
         if (args.empty()) {
             printError("Usage: launch <kernel_name> [param1] [param2] ...");
-            printError("Example: launch myKernel 0x1000 0x2000");
+            printMessage("");
+            printMessage("Parameters are automatically typed based on the PTX kernel signature:");
+            printMessage("  - No parameters: Just kernel name (e.g., launch myKernel)");
+            printMessage("  - Pointer types (.u64): Pass device address (e.g., 0x10000)");
+            printMessage("  - Scalar types (.u32, .f32, etc.): Pass value directly (e.g., 1024, 2.5)");
+            printMessage("");
+            printMessage("Example 1 (no parameters):");
+            printMessage("  launch testKernel");
+            printMessage("");
+            printMessage("Example 2 (pointers only):");
+            printMessage("  launch vecAdd 0x10000 0x10020 0x10040");
+            printMessage("");
+            printMessage("Example 3 (mixed pointers and scalars):");
+            printMessage("  launch scaleArray 0x10000 1024 2.5");
+            printMessage("  (ptr to data, size N=1024, scale factor=2.5)");
+            printMessage("");
+            printMessage("Type 'help launch' for complete workflow examples.");
             return;
         }
         
         // First argument is the kernel name
         std::string kernelName = args[0];
         
-        // Remaining arguments are parameter addresses
-        std::vector<CUdeviceptr> parameters;
-        for (size_t i = 1; i < args.size(); ++i) {
-            try {
-                CUdeviceptr param = std::stoull(args[i], nullptr, 0);
-                parameters.push_back(param);
-            } catch (...) {
-                std::ostringstream oss;
-                oss << "Invalid parameter format: " << args[i];
-                printError(oss.str());
-                return;
+        // Get the parsed PTX program to determine parameter types
+        if (!m_vm->hasProgram()) {
+            printError("No PTX program loaded. Use 'load' first.");
+            return;
+        }
+        
+        const PTXExecutor& executor = m_vm->getExecutor();
+        if (!executor.hasProgramStructure()) {
+            printError("PTX program structure not available.");
+            return;
+        }
+        
+        const PTXProgram& program = executor.getProgram();
+        
+        // Find the kernel function
+        const PTXFunction* kernel = nullptr;
+        for (const auto& func : program.functions) {
+            if (func.isEntry && func.name == kernelName) {
+                kernel = &func;
+                break;
             }
         }
         
-        // Launch the kernel with default grid/block dimensions
-        // In a more complete implementation, these would be specified by the user
-        printMessage("Launching kernel: " + kernelName);
-        
-        // Prepare kernel parameters
-        std::vector<void*> kernelParams;
-        for (const auto& param : parameters) {
-            kernelParams.push_back(reinterpret_cast<void*>(param));
+        if (kernel == nullptr) {
+            printError("Kernel '" + kernelName + "' not found in loaded PTX program.");
+            printMessage("Available kernels:");
+            for (const auto& func : program.functions) {
+                if (func.isEntry) {
+                    printMessage("  - " + func.name);
+                }
+            }
+            return;
         }
-        kernelParams.push_back(nullptr); // Null-terminate the array
+        
+        // Check parameter count
+        size_t expectedParams = kernel->parameters.size();
+        size_t providedParams = args.size() - 1; // Exclude kernel name
+        
+        if (providedParams != expectedParams) {
+            std::ostringstream oss;
+            oss << "Parameter count mismatch: expected " << expectedParams 
+                << ", got " << providedParams;
+            printError(oss.str());
+            printMessage("");
+            if (expectedParams == 0) {
+                printMessage("Kernel signature: " + kernelName + "()  // No parameters");
+                printMessage("Usage: launch " + kernelName);
+            } else {
+                printMessage("Kernel signature: " + kernelName + "(");
+                for (size_t i = 0; i < kernel->parameters.size(); ++i) {
+                    const auto& param = kernel->parameters[i];
+                    std::ostringstream poss;
+                    poss << "  [" << i << "] " << param.type << " " << param.name;
+                    if (param.isPointer) {
+                        poss << " (pointer - needs device address)";
+                    } else {
+                        poss << " (scalar - needs value)";
+                    }
+                    printMessage(poss.str());
+                }
+                printMessage(")");
+            }
+            return;
+        }
+        
+        // Parse and prepare parameters based on their PTX types
+        printMessage("");
+        if (expectedParams == 0) {
+            printMessage("Launching kernel with no parameters");
+        } else {
+            printMessage("Parsing kernel parameters:");
+        }
+        std::vector<std::vector<uint8_t>> parameterData;
+        std::vector<void*> kernelParams;
+        
+        for (size_t i = 0; i < kernel->parameters.size(); ++i) {
+            const PTXParameter& paramDef = kernel->parameters[i];
+            const std::string& valueStr = args[i + 1];
+            
+            std::vector<uint8_t> paramData;
+            if (!parseParameterValue(valueStr, paramDef, paramData)) {
+                std::ostringstream oss;
+                oss << "Failed to parse parameter " << i << " ('" << paramDef.name 
+                    << "' of type " << paramDef.type << ") from value: " << valueStr;
+                printError(oss.str());
+                return;
+            }
+            
+            // Display parameter info
+            std::ostringstream poss;
+            poss << "  [" << i << "] " << paramDef.name << " (" << paramDef.type << "): ";
+            
+            if (paramDef.isPointer) {
+                uint64_t addr;
+                std::memcpy(&addr, paramData.data(), sizeof(uint64_t));
+                poss << "device address 0x" << std::hex << addr << std::dec;
+            } else if (paramDef.type == ".u32") {
+                uint32_t value;
+                std::memcpy(&value, paramData.data(), sizeof(uint32_t));
+                poss << "value " << value;
+            } else if (paramDef.type == ".s32") {
+                int32_t value;
+                std::memcpy(&value, paramData.data(), sizeof(int32_t));
+                poss << "value " << value;
+            } else if (paramDef.type == ".f32") {
+                float value;
+                std::memcpy(&value, paramData.data(), sizeof(float));
+                poss << "value " << value;
+            } else if (paramDef.type == ".f64") {
+                double value;
+                std::memcpy(&value, paramData.data(), sizeof(double));
+                poss << "value " << value;
+            } else {
+                poss << "value (binary)";
+            }
+            
+            printMessage(poss.str());
+            
+            // Store parameter data and create pointer to it
+            parameterData.push_back(std::move(paramData));
+            kernelParams.push_back(parameterData.back().data());
+        }
+        
+        // Launch the kernel with default grid/block dimensions
+        printMessage("");
+        printMessage("Launching kernel: " + kernelName);
+        printMessage("Grid dimensions: 1 x 1 x 1");
+        printMessage("Block dimensions: 32 x 1 x 1");
         
         HostAPI hostAPI;
         CUresult result = hostAPI.cuLaunchKernel(
@@ -846,10 +825,12 @@ public:
         );
         
         if (result == CUDA_SUCCESS) {
-            printMessage("Kernel launched successfully");
+            printMessage("");
+            printMessage("✓ Kernel launched successfully");
+            printMessage("Use 'memory <address> <size>' to view results");
         } else {
             std::ostringstream oss;
-            oss << "Failed to launch kernel. Error code: " << result;
+            oss << "✗ Kernel launch failed with error code: " << result;
             printError(oss.str());
         }
     }
@@ -884,24 +865,6 @@ public:
         
         // Dump warp execution analysis
         m_vm->dumpWarpExecutionAnalysis();
-    }
-
-    // List command - list loaded program
-    void listCommand(const std::vector<std::string>& args) {
-        if (m_loadedProgram.empty()) {
-            printError("No program loaded. Use 'load' to load a program first.");
-            return;
-        }
-        
-        // Display program listing
-        std::ostringstream oss;
-        oss << "Loaded program: " << m_loadedProgram << " (placeholder)";
-        printMessage(oss.str());
-        
-        // In real implementation, this would disassemble the program
-        printMessage("Disassembly (placeholder):", false);
-        printMessage("-------------------------------");
-        printMessage("This is a placeholder. Real implementation would show disassembled code.");
     }
 
     // Quit command - exit the VM
@@ -957,11 +920,6 @@ public:
         oss << "Current PC: 0x" << std::hex << m_currentPC << std::dec;
         printMessage(oss.str());
         
-        // Warp and thread status
-        oss.str("");
-        oss << "Warps: " << m_numWarps << "  Threads per warp: " << m_threadsPerWarp;
-        printMessage(oss.str());
-        
         // Performance counters
         oss.str("");
         oss << "Instructions executed: " << m_vm->getPerformanceCounters().getCounterValue(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
@@ -980,33 +938,7 @@ public:
         printMessage(oss.str());
     }
 
-    // Disassemble command - disassemble loaded program
-    void disassembleCommand(const std::vector<std::string>& args) {
-        if (m_loadedProgram.empty()) {
-            printError("No program loaded. Use 'load' to load a program first.");
-            return;
-        }
-        
-        printMessage("Disassembling program (placeholder):", false);
-        printMessage("-------------------------------------");
-        printMessage("This is a placeholder. Real implementation would show disassembled code.");
-    }
-
-    // Threads command - display thread execution state
-    void threadsCommand(const std::vector<std::string>& args) {
-        printMessage("Thread Execution State (placeholder):", false);
-        printMessage("-------------------------------------");
-        printMessage("This is a placeholder. Real implementation would show thread states.");
-    }
-
-    // Warps command - display warp execution state
-    void warpsCommand(const std::vector<std::string>& args) {
-        printMessage("Warp Execution State (placeholder):", false);
-        printMessage("-------------------------------------");
-        printMessage("This is a placeholder. Real implementation would show warp states.");
-    }
-
-    // Display prompt and get user input
+    // Visualize command - display visualization
     std::string getCommandLine() {
         std::cout << (m_loadedProgram.empty() ? "ptx-vm> " : ("ptx-vm(" + m_loadedProgram + ")> "));
         std::string line;
@@ -1061,13 +993,6 @@ public:
     }
 
 
-    // Update execution state
-    void updateExecutionState() {
-        // In real implementation, this would get the current execution state from the VM
-        // For now, just increment PC
-        m_currentPC++;
-    }
-
     // Core components
     std::unique_ptr<PTXVM> m_vm;
     
@@ -1075,160 +1000,12 @@ public:
     std::string m_loadedProgram;
     size_t m_currentPC = 0;
     bool m_executing = false;
-    uint32_t m_numWarps = 0;
-    uint32_t m_threadsPerWarp = 0;
-    
-    // Kernel parameters
-    std::vector<std::string> m_kernelParams;
 };
 
 CLIInterface::CLIInterface() : pImpl(std::make_unique<Impl>()) {}
 
 CLIInterface::~CLIInterface() = default;
 
-bool CLIInterface::initialize() {
-    return true;  // Placeholder for initialization
-}
-
 int CLIInterface::run(int argc, char* argv[]) {
     return pImpl->run(argc, argv);
-}
-
-int CLIInterface::executeCommand(const std::string& command, const std::vector<std::string>& args) {
-    // Convert command to lowercase
-    std::string cmd = command;
-    std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
-    
-    // Dispatch to appropriate command handler
-    if (cmd == "help" || cmd == "?") {
-        pImpl->helpCommand(args);
-    } else if (cmd == "load") {
-        pImpl->loadCommand(args);
-    } else if (cmd == "run") {
-        pImpl->runCommand(args);
-    } else if (cmd == "step") {
-        pImpl->stepCommand(args);
-    } else if (cmd == "break" || cmd == "b") {
-        pImpl->breakCommand(args);
-    } else if (cmd == "watch" || cmd == "w") {
-        pImpl->watchCommand(args);
-    } else if (cmd == "register" || cmd == "reg" || cmd == "r") {
-        pImpl->registerCommand(args);
-    } else if (cmd == "memory" || cmd == "mem" || cmd == "m") {
-        pImpl->memoryCommand(args);
-    } else if (cmd == "alloc") {
-        pImpl->allocCommand(args);
-    } else if (cmd == "memcpy") {
-        pImpl->memcpyCommand(args);
-    } else if (cmd == "write") {
-        pImpl->writeCommand(args);
-    } else if (cmd == "fill") {
-        pImpl->fillCommand(args);
-    } else if (cmd == "loadfile") {
-        pImpl->loadfileCommand(args);
-    } else if (cmd == "launch") {
-        pImpl->launchCommand(args);
-    } else if (cmd == "profile") {
-        pImpl->profileCommand(args);
-    } else if (cmd == "dump") {
-        pImpl->dumpCommand(args);
-    } else if (cmd == "list" || cmd == "l") {
-        pImpl->listCommand(args);
-    } else if (cmd == "quit" || cmd == "exit" || cmd == "q") {
-        pImpl->quitCommand(args);
-        return 1;  // Signal to quit
-    } else if (cmd == "clear" || cmd == "cls") {
-        pImpl->clearCommand(args);
-    } else if (cmd == "version") {
-        pImpl->versionCommand(args);
-    } else if (cmd == "info") {
-        pImpl->infoCommand(args);
-    } else if (cmd == "disassemble" || cmd == "disas") {
-        pImpl->disassembleCommand(args);
-    } else if (cmd == "threads") {
-        pImpl->threadsCommand(args);
-    } else if (cmd == "warps") {
-        pImpl->warpsCommand(args);
-    } else {
-        std::ostringstream oss;
-        oss << "Unknown command: " << command << ". Type 'help' for available commands.";
-        pImpl->printError(oss.str());
-    }
-    
-    return 0;  // Continue running
-}
-
-// Help command - display available commands
-void CLIInterface::helpCommand(const std::vector<std::string>& args) {
-    pImpl->helpCommand(args);
-}
-
-// Load command - load a PTX program
-void CLIInterface::loadCommand(const std::vector<std::string>& args) {
-    pImpl->loadCommand(args);
-}
-
-// Run command - execute the loaded program
-void CLIInterface::runCommand(const std::vector<std::string>& args) {
-    pImpl->runCommand(args);
-}
-
-// Step command - execute one instruction
-void CLIInterface::stepCommand(const std::vector<std::string>& args) {
-    pImpl->stepCommand(args);
-}
-
-// Break command - set a breakpoint
-void CLIInterface::breakCommand(const std::vector<std::string>& args) {
-    pImpl->breakCommand(args);
-}
-
-// Watch command - set a watchpoint
-void CLIInterface::watchCommand(const std::vector<std::string>& args) {
-    pImpl->watchCommand(args);
-}
-
-// Register command - display/register information
-void CLIInterface::registerCommand(const std::vector<std::string>& args) {
-    pImpl->registerCommand(args);
-}
-
-// Memory command - display memory information
-void CLIInterface::memoryCommand(const std::vector<std::string>& args) {
-    pImpl->memoryCommand(args);
-}
-
-// Profiling command - control profiling
-void CLIInterface::profileCommand(const std::vector<std::string>& args) {
-    pImpl->profileCommand(args);
-}
-
-// Dump command - dump execution statistics
-void CLIInterface::dumpCommand(const std::vector<std::string>& args) {
-    pImpl->dumpCommand(args);
-}
-
-// List command - list loaded program
-void CLIInterface::listCommand(const std::vector<std::string>& args) {
-    pImpl->listCommand(args);
-}
-
-// Quit command - exit the VM
-void CLIInterface::quitCommand(const std::vector<std::string>& args) {
-    pImpl->quitCommand(args);
-}
-
-// Display prompt and get user input
-std::string CLIInterface::getCommandLine() {
-    return pImpl->getCommandLine();
-}
-
-// Print message to console
-void CLIInterface::printMessage(const std::string& message) {
-    pImpl->printMessage(message);
-}
-
-// Print error message to console
-void CLIInterface::printError(const std::string& message) {
-    pImpl->printError(message);
 }

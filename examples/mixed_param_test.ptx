@@ -1,0 +1,180 @@
+// PTX Example: Mixed Parameter Types (Pointers + Scalars)
+// Demonstrates automatic parameter type inference in the CLI
+
+.version 8.0
+.target sm_80
+.address_size 64
+
+// Example 1: Scale array by a scalar factor
+// Parameters: pointer (.u64), size (.u32), scale factor (.f32)
+.visible .entry scaleArray(
+    .param .u64 data_ptr,
+    .param .u32 N,
+    .param .f32 scale
+)
+{
+    .reg .u32 %r<5>;
+    .reg .u64 %rd<5>;
+    .reg .f32 %f<5>;
+    .reg .pred %p1;
+    
+    // Get thread ID
+    mov.u32 %r1, %tid.x;
+    
+    // Load parameters
+    ld.param.u64 %rd1, [data_ptr];  // Pointer to data
+    ld.param.u32 %r2, [N];          // Array size
+    ld.param.f32 %f1, [scale];      // Scale factor
+    
+    // Boundary check
+    setp.ge.u32 %p1, %r1, %r2;
+    @%p1 bra END;
+    
+    // Calculate address: data_ptr + tid * 4
+    mul.wide.u32 %rd2, %r1, 4;
+    add.u64 %rd3, %rd1, %rd2;
+    
+    // Load data[tid]
+    ld.global.f32 %f2, [%rd3];
+    
+    // Scale: data[tid] *= scale
+    mul.f32 %f3, %f2, %f1;
+    
+    // Store result
+    st.global.f32 [%rd3], %f3;
+    
+END:
+    ret;
+}
+
+// Example 2: Add scalar offset to array
+// Parameters: pointer (.u64), size (.u32), offset (.s32)
+.visible .entry addOffset(
+    .param .u64 data_ptr,
+    .param .u32 N,
+    .param .s32 offset
+)
+{
+    .reg .u32 %r<5>;
+    .reg .u64 %rd<5>;
+    .reg .s32 %i<5>;
+    .reg .pred %p1;
+    
+    // Get thread ID
+    mov.u32 %r1, %tid.x;
+    
+    // Load parameters
+    ld.param.u64 %rd1, [data_ptr];
+    ld.param.u32 %r2, [N];
+    ld.param.s32 %i1, [offset];
+    
+    // Boundary check
+    setp.ge.u32 %p1, %r1, %r2;
+    @%p1 bra END;
+    
+    // Calculate address
+    mul.wide.u32 %rd2, %r1, 4;
+    add.u64 %rd3, %rd1, %rd2;
+    
+    // Load data[tid]
+    ld.global.s32 %i2, [%rd3];
+    
+    // Add offset
+    add.s32 %i3, %i2, %i1;
+    
+    // Store result
+    st.global.s32 [%rd3], %i3;
+    
+END:
+    ret;
+}
+
+// Example 3: Compute with multiple scalars (no pointers!)
+// Parameters: a (.u32), b (.u32), c (.f32)
+// Result: stores (a + b) * c to global memory location 0x10000
+.visible .entry computeScalars(
+    .param .u32 a,
+    .param .u32 b,
+    .param .f32 c
+)
+{
+    .reg .u32 %r<5>;
+    .reg .f32 %f<5>;
+    .reg .u64 %rd1;
+    
+    // Load scalar parameters
+    ld.param.u32 %r1, [a];
+    ld.param.u32 %r2, [b];
+    ld.param.f32 %f1, [c];
+    
+    // Compute: (a + b)
+    add.u32 %r3, %r1, %r2;
+    
+    // Convert to float
+    cvt.rn.f32.u32 %f2, %r3;
+    
+    // Multiply by c
+    mul.f32 %f3, %f2, %f1;
+    
+    // Store result to fixed address (simplified for testing)
+    mov.u64 %rd1, 0x10000;
+    st.global.f32 [%rd1], %f3;
+    
+    ret;
+}
+
+// Example 4: Complex mixed parameters
+// Demonstrates all common types
+.visible .entry complexKernel(
+    .param .u64 input_ptr,    // Input array
+    .param .u64 output_ptr,   // Output array
+    .param .u32 N,            // Array size
+    .param .f32 alpha,        // Scale factor
+    .param .s32 beta,         // Offset
+    .param .f64 gamma         // High-precision multiplier
+)
+{
+    .reg .u32 %r<5>;
+    .reg .u64 %rd<10>;
+    .reg .s32 %i<5>;
+    .reg .f32 %f<10>;
+    .reg .f64 %fd<5>;
+    .reg .pred %p1;
+    
+    // Get thread ID
+    mov.u32 %r1, %tid.x;
+    
+    // Load all parameters
+    ld.param.u64 %rd1, [input_ptr];
+    ld.param.u64 %rd2, [output_ptr];
+    ld.param.u32 %r2, [N];
+    ld.param.f32 %f1, [alpha];
+    ld.param.s32 %i1, [beta];
+    ld.param.f64 %fd1, [gamma];
+    
+    // Boundary check
+    setp.ge.u32 %p1, %r1, %r2;
+    @%p1 bra END;
+    
+    // Calculate addresses
+    mul.wide.u32 %rd3, %r1, 4;
+    add.u64 %rd4, %rd1, %rd3;  // input address
+    add.u64 %rd5, %rd2, %rd3;  // output address
+    
+    // Load input value
+    ld.global.f32 %f2, [%rd4];
+    
+    // Complex computation: (input * alpha + beta) * gamma
+    mul.f32 %f3, %f2, %f1;         // input * alpha
+    cvt.rn.f32.s32 %f4, %i1;       // convert beta to float
+    add.f32 %f5, %f3, %f4;         // + beta
+    cvt.f64.f32 %fd2, %f5;         // convert to double
+    mul.f64 %fd3, %fd2, %fd1;      // * gamma
+    cvt.rn.f32.f64 %f6, %fd3;      // convert back to float
+    
+    // Store result
+    st.global.f32 [%rd5], %f6;
+    
+END:
+    ret;
+}

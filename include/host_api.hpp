@@ -82,10 +82,7 @@ public:
     
     // Check if a program is loaded
     bool isProgramLoaded() const;
-    
-    // Run the loaded program
-    bool run();
-    
+        
     // Step through the program
     bool step();
     
@@ -183,44 +180,5 @@ private:
     class Impl;
     std::unique_ptr<Impl> pImpl;
 };
-
-// Simplified API for testing
-namespace SimpleHostAPI {
-    // Initialize the virtual machine
-    bool initializeVM();
-    
-    // Load a PTX program
-    bool loadProgram(const std::string& filename);
-    
-    // Allocate memory on the VM
-    CUdeviceptr allocateMemory(size_t size);
-    
-    // Free memory on the VM
-    void freeMemory(CUdeviceptr ptr);
-    
-    // Copy memory to VM
-    bool copyToVM(CUdeviceptr dest, const void* src, size_t size);
-    
-    // Copy memory from VM
-    bool copyFromVM(void* dest, CUdeviceptr src, size_t size);
-    
-    // Launch a kernel
-    bool launchKernel(const std::string& kernelName, 
-                     const std::vector<CUdeviceptr>& arguments,
-                     unsigned int gridDimX = 1, unsigned int gridDimY = 1, unsigned int gridDimZ = 1,
-                     unsigned int blockDimX = 1, unsigned int blockDimY = 1, unsigned int blockDimZ = 1);
-    
-    // Get performance counters
-    const PerformanceCounters& getPerformanceCounters();
-    
-    // Print warp execution visualization
-    void printWarpVisualization();
-    
-    // Print memory access visualization
-    void printMemoryVisualization();
-    
-    // Print performance counter display
-    void printPerformanceCounters();
-}
 
 #endif // HOST_API_HPP

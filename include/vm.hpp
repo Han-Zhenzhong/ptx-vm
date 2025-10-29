@@ -40,12 +40,10 @@ public:
     // Initialize the virtual machine
     bool initialize();
 
-    // Load and execute a PTX program
-    bool loadAndExecuteProgram(const std::string& filename);
-    
     // Host API methods
     bool loadProgram(const std::string& filename);
     bool isProgramLoaded() const;
+    bool hasProgram() const;
     bool run();
     bool step();
     bool setBreakpoint(size_t address);
@@ -64,7 +62,6 @@ public:
     // Kernel execution methods
     void setKernelName(const std::string& name);
     void setKernelLaunchParams(const KernelLaunchParams& params);
-    bool launchKernel();
     
     // Parameter handling methods
     void setKernelParameters(const std::vector<KernelParameter>& parameters);

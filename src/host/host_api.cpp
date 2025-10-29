@@ -11,11 +11,6 @@
 #include "registers/register_bank.hpp"  // Include for RegisterBank complete type
 #include "instruction_types.hpp"  // Include for InstructionTypes enum
 
-// Global variables for SimpleHostAPI
-static std::unique_ptr<PTXVM> g_simpleVM = nullptr;
-static bool g_vmInitialized = false;
-static std::map<CUdeviceptr, size_t> g_allocations;
-
 // Private implementation class
 class HostAPI::Impl {
 public:
@@ -50,15 +45,6 @@ public:
     // Check if a program is loaded
     bool isProgramLoaded() const {
         return m_isProgramLoaded;
-    }
-
-    // Run the loaded program
-    bool run() {
-        if (!m_isProgramLoaded) {
-            return false;
-        }
-        
-        return m_vm->loadAndExecuteProgram(m_programFilename);
     }
 
     // Step through the program
@@ -382,10 +368,6 @@ bool HostAPI::isProgramLoaded() const {
     return pImpl->isProgramLoaded();
 }
 
-bool HostAPI::run() {
-    return pImpl->run();
-}
-
 bool HostAPI::step() {
     return pImpl->step();
 }
@@ -628,167 +610,4 @@ void HostAPI::visualizeMemory() {
 
 void HostAPI::visualizePerformance() {
     pImpl->printPerformanceCounters();
-}
-
-// Simplified API for testing
-namespace SimpleHostAPI {
-    // Initialize the virtual machine
-    bool initializeVM() {
-        if (g_vmInitialized) {
-            return true;
-        }
-        
-        g_simpleVM = std::make_unique<PTXVM>();
-        g_vmInitialized = g_simpleVM->initialize();
-        return g_vmInitialized;
-    }
-    
-    // Allocate memory on the VM
-    CUdeviceptr allocateMemory(size_t size) {
-        if (!g_vmInitialized) {
-            return 0;
-        }
-        
-        CUdeviceptr ptr;
-        HostAPI api;
-        CUresult result = api.cuMemAlloc(&ptr, size);
-        
-        if (result == CUDA_SUCCESS) {
-            g_allocations[ptr] = size; // Track allocation
-            return ptr;
-        }
-        
-        return 0;
-    }
-    
-    // Free memory on the VM
-    void freeMemory(CUdeviceptr ptr) {
-        if (!g_vmInitialized) {
-            return;
-        }
-        
-        // Remove from our tracking map
-        g_allocations.erase(ptr);
-        
-        HostAPI api;
-        api.cuMemFree(ptr);
-    }
-    
-    // Copy memory to VM
-    bool copyToVM(CUdeviceptr dest, const void* src, size_t size) {
-        if (!g_vmInitialized || !src) {
-            return false;
-        }
-        
-        HostAPI api;
-        CUresult result = api.cuMemcpyHtoD(dest, src, size);
-        return (result == CUDA_SUCCESS);
-    }
-    
-    // Copy memory from VM
-    bool copyFromVM(void* dest, CUdeviceptr src, size_t size) {
-        if (!g_vmInitialized || !dest) {
-            return false;
-        }
-        
-        HostAPI api;
-        CUresult result = api.cuMemcpyDtoH(dest, src, size);
-        return (result == CUDA_SUCCESS);
-    }
-    
-    // Launch a kernel
-    bool launchKernel(const std::string& kernelName, 
-                     const std::vector<CUdeviceptr>& arguments,
-                     unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ,
-                     unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ) {
-        if (!g_vmInitialized) {
-            return false;
-        }
-        
-        // Set up kernel launch parameters
-        KernelLaunchParams params;
-        params.kernelName = kernelName;
-        params.gridDimX = gridDimX;
-        params.gridDimY = gridDimY;
-        params.gridDimZ = gridDimZ;
-        params.blockDimX = blockDimX;
-        params.blockDimY = blockDimY;
-        params.blockDimZ = blockDimZ;
-        params.sharedMemBytes = 0;
-        params.parameters = arguments;
-        
-        // Convert CUdeviceptr arguments to kernel parameters
-        std::vector<KernelParameter> kernelParams;
-        size_t offset = 0;
-        for (const auto& arg : arguments) {
-            KernelParameter param;
-            param.devicePtr = arg;
-            param.size = sizeof(CUdeviceptr); // Simplified size
-            param.offset = offset;
-            kernelParams.push_back(param);
-            offset += param.size;
-        }
-        
-        // Pass parameters to VM
-        g_simpleVM->setKernelName(kernelName);
-        g_simpleVM->setKernelLaunchParams(params);
-        g_simpleVM->setKernelParameters(kernelParams);
-        g_simpleVM->setupKernelParameters();
-        
-        // Launch the kernel
-        return g_simpleVM->launchKernel();
-    }
-    
-    // Get performance counters
-    const PerformanceCounters& getPerformanceCounters() {
-        static PerformanceCounters dummyCounters; // Return dummy counters if VM not initialized
-        if (!g_vmInitialized) {
-            return dummyCounters;
-        }
-        
-        return g_simpleVM->getPerformanceCounters();
-    }
-    
-    // Print warp execution visualization
-    void printWarpVisualization() {
-        if (!g_vmInitialized) {
-            return;
-        }
-        
-        g_simpleVM->visualizeWarps();
-    }
-    
-    // Print memory access visualization
-    void printMemoryVisualization() {
-        if (!g_vmInitialized) {
-            return;
-        }
-        
-        g_simpleVM->visualizeMemory();
-    }
-    
-    // Print performance counter display
-    void printPerformanceCounters() {
-        if (!g_vmInitialized) {
-            return;
-        }
-        
-        g_simpleVM->visualizePerformance();
-    }
-    
-    // Get list of current memory allocations
-    const std::map<CUdeviceptr, size_t>& getMemoryAllocations() {
-        return g_allocations;
-    }
-    
-    // Load a PTX program
-    bool loadProgram(const std::string& filename) {
-        if (!g_vmInitialized) {
-            if (!initializeVM()) {
-                return false;
-            }
-        }
-        
-        return g_simpleVM->loadProgram(filename);
-    }
 }
