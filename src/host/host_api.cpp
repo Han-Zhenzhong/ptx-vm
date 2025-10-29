@@ -44,24 +44,6 @@ public:
     bool isProgramLoaded() const {
         return m_isProgramLoaded;
     }
-
-    // Start profiling
-    bool startProfiling(const std::string& filename) {
-        if (!m_vm) {
-            return false;
-        }
-        
-        return m_vm->startProfiling(filename);
-    }
-
-    // Dump statistics
-    void dumpStatistics() const {
-        if (!m_vm) {
-            return;
-        }
-        
-        m_vm->dumpExecutionStats();
-    }
     
     // Memory management functions
     CUresult cuMemAlloc(CUdeviceptr* dptr, size_t bytesize) {
@@ -238,14 +220,6 @@ bool HostAPI::loadProgram(const std::string& filename) {
 
 bool HostAPI::isProgramLoaded() const {
     return pImpl->isProgramLoaded();
-}
-
-bool HostAPI::startProfiling(const std::string& filename) {
-    return pImpl->startProfiling(filename);
-}
-
-void HostAPI::dumpStatistics() const {
-    pImpl->dumpStatistics();
 }
 
 // Implement CUDA-like API functions

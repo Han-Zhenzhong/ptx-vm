@@ -59,54 +59,6 @@ typedef uint64_t CounterValue;
 // Performance counter names
 extern const std::unordered_map<CounterID, std::string> COUNTER_NAMES;
 
-// Branch statistics
-struct BranchStats {
-    size_t totalBranches;
-    size_t unconditionalBranches;
-    size_t divergentBranches;
-    size_t errors;
-};
-
-
-// Performance counters data structure
-struct PerformanceCountersData {
-    // Execution statistics
-    CounterValue instructionsExecuted;
-    CounterValue cycles;
-    double ipc;
-    
-    // Register statistics
-    CounterValue registerReads;
-    CounterValue registerWrites;
-    CounterValue spillOperations;
-    
-    // Memory statistics
-    CounterValue globalMemoryReads;
-    CounterValue globalMemoryWrites;
-    CounterValue sharedMemoryReads;
-    CounterValue sharedMemoryWrites;
-    CounterValue localMemoryReads;
-    CounterValue localMemoryWrites;
-    
-    // Control flow statistics
-    CounterValue branches;
-    CounterValue divergentBranches;
-    CounterValue branchReconvergencePoints;
-    CounterValue predicateSkipped;
-    
-    // Cache statistics
-    CounterValue instructionCacheHits;
-    CounterValue instructionCacheMisses;
-    CounterValue dataCacheHits;
-    CounterValue dataCacheMisses;
-    
-    // Divergence handling statistics
-    DivergenceStats divergenceStats;  // Forward declared in divergence_mechanism.hpp
-    
-    // Branch statistics
-    BranchStats branchStats;
-};
-
 // Performance counters interface class
 class PerformanceCounters {
 public:
@@ -136,9 +88,6 @@ public:
     CounterValue getExecutionTime() const;
     
 private:
-    // Counter values
-    CounterValue m_counterValues[PerformanceCounterIDs::MAX_COUNTER_ID];
-    
     // Private implementation details
     class Impl;
     std::unique_ptr<Impl> pImpl;

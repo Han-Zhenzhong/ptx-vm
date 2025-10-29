@@ -4,6 +4,10 @@
 #include <iostream>
 #include "memory/memory.hpp"  // Include full definition here
 
+// Base address in the VM address space reserved for kernel parameter memory.
+// Ensure this is a CUdeviceptr so it can be assigned directly to variables of that type.
+static constexpr CUdeviceptr PARAMETER_MEMORY_BASE = static_cast<CUdeviceptr>(0x10000ULL);
+
 // Explicitly define the deleter for MemorySubsystem since we're using Pimpl
 // This prevents the compiler from trying to generate a default deleter which requires complete type
 struct MemorySubsystemDeleter {
@@ -48,10 +52,6 @@ public:
     
     // Parameter memory space
     size_t m_parameterMemoryOffset;
-    
-    // Profiling support
-    std::ofstream m_profileOutputStream;
-    std::string m_profileOutputFile;
     
     // Initialization state
     bool isInitialized;
@@ -201,9 +201,21 @@ bool PTXVM::loadProgram(const std::string& filename) {
 
 bool PTXVM::run() {
     if (!pImpl->m_isProgramLoaded) {
+        std::cerr << "No program loaded" << std::endl;
         return false;
     }
     
+    // ✅ Setup kernel parameters before execution
+    // This writes parameters to parameter memory (0x1000 base)
+    // and maps them to registers
+    if (!pImpl->m_kernelParameters.empty()) {
+        if (!setupKernelParameters()) {
+            std::cerr << "Failed to setup kernel parameters" << std::endl;
+            return false;
+        }
+    }
+    
+    // Execute the program
     return pImpl->m_executor->execute();
 }
 
@@ -229,44 +241,6 @@ void PTXVM::visualizePerformance() {
     if (pImpl->m_debugger) {
         pImpl->m_debugger->printPerformanceCounters();
     }
-}
-
-// Start profiling session
-bool PTXVM::startProfiling(const std::string& profileName) {
-    // Implementation moved to vm_profiler.cpp
-    return false;  // Placeholder until we implement the actual code
-}
-
-// Stop profiling session
-bool PTXVM::stopProfiling() {
-    // Implementation moved to vm_profiler.cpp
-    return false;  // Placeholder until we implement the actual code
-}
-
-// Get current time as string
-std::string PTXVM::getCurrentTime() {
-    // Implementation moved to vm_profiler.cpp
-    return "";  // Placeholder until we implement the actual code
-}
-
-// Dump execution statistics to console
-void PTXVM::dumpExecutionStats() {
-    // Implementation moved to vm_profiler.cpp
-}
-
-// Dump instruction mix analysis
-void PTXVM::dumpInstructionMixAnalysis() {
-    // Implementation moved to vm_profiler.cpp
-}
-
-// Dump memory access pattern analysis
-void PTXVM::dumpMemoryAccessAnalysis() {
-    // Implementation moved to vm_profiler.cpp
-}
-
-// Dump warp execution analysis
-void PTXVM::dumpWarpExecutionAnalysis() {
-    // Implementation moved to vm_profiler.cpp
 }
 
 CUdeviceptr PTXVM::allocateMemory(size_t size) {

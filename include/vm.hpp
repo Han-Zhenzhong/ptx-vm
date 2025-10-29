@@ -2,7 +2,6 @@
 #define PTX_VM_HPP
 
 #include <memory>
-#include <fstream>
 #include <vector>
 #include <map>
 #include <string>
@@ -45,19 +44,7 @@ public:
     bool isProgramLoaded() const;
     bool hasProgram() const;
     bool run();
-    bool step();
-    bool setBreakpoint(size_t address);
     bool setWatchpoint(uint64_t address);
-    void printRegisters() const;
-    void printAllRegisters() const;
-    void printPredicateRegisters() const;
-    void printProgramCounter() const;
-    void printMemory(uint64_t address, size_t size) const;
-    void dumpStatistics() const;
-    void listInstructions(size_t start, size_t count) const;
-    void printWarpVisualization() const;
-    void printMemoryVisualization() const;
-    void printPerformanceCounters() const;
 
     // Kernel execution methods
     void setKernelName(const std::string& name);
@@ -98,35 +85,10 @@ public:
     void visualizeMemory();
     void visualizePerformance();
     
-    // Profiling functions
-    // Start profiling session
-    bool startProfiling(const std::string& profileName);
-    
-    // Stop profiling session
-    bool stopProfiling();
-    
-    // Dump execution statistics to console
-    void dumpExecutionStats();
-    
-    // Dump instruction mix analysis
-    void dumpInstructionMixAnalysis();
-    
-    // Dump memory access pattern analysis
-    void dumpMemoryAccessAnalysis();
-    
-    // Dump warp execution analysis
-    void dumpWarpExecutionAnalysis();
-    
 private:
     // Private implementation details
     class Impl;
     std::unique_ptr<Impl> pImpl;
-    
-    // Parameter memory space (special area for kernel parameters)
-    static const CUdeviceptr PARAMETER_MEMORY_BASE = 0x1000;
-    
-    // Helper function to get current time as string
-    std::string getCurrentTime();
 };
 
 #endif // PTX_VM_HPP

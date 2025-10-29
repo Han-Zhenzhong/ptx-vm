@@ -166,30 +166,6 @@ private:
     // Private implementation details
     class Impl;
     std::unique_ptr<Impl> pImpl;
-    
-    // Synchronization support methods
-    void handleSynchronization(const DecodedInstruction& instruction);
-    void handleCtaSynchronization();
-    void handleGridSynchronization();
-    void handleMemoryBarrier();
-    bool checkCtaThreadsCompleted(uint32_t ctaId);
-    bool checkGridCtasCompleted(uint32_t gridId);
-    void flushMemoryCaches();
-    
-    // Divergence handling methods
-    void handleDivergence(const DecodedInstruction& instruction, uint64_t activeMask, uint64_t threadMask);
-    void basicReconvergence(const DecodedInstruction& instruction, uint64_t& activeMask, bool takeBranch, uint64_t threadMask);
-    void cfgBasedReconvergence(const DecodedInstruction& instruction, uint64_t& activeMask, bool takeBranch, uint64_t threadMask);
-    void stackBasedReconvergence(const DecodedInstruction& instruction, uint64_t& activeMask, bool takeBranch, uint64_t threadMask);
-    void updateDivergenceStats(bool takeBranch);
-    void updateReconvergenceStats(size_t divergenceCycles);
-    size_t findCFGReconvergencePoint(size_t pc);
-    bool buildControlFlowGraphFromPTX(const std::vector<DecodedInstruction>& instructions);
-    
-    // Parameter instruction execution methods
-    bool executeLDParam(const DecodedInstruction& instr);
-    bool executeSTParam(const DecodedInstruction& instr);
-    
 };
 
 #endif // PTX_EXECUTOR_HPP

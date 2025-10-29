@@ -83,12 +83,6 @@ public:
     // Check if a program is loaded
     bool isProgramLoaded() const;
     
-    // Start profiling
-    bool startProfiling(const std::string& filename);
-    
-    // Dump statistics
-    void dumpStatistics() const;
-    
     // CUDA-like API functions
     
     // Device management

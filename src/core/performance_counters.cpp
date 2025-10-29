@@ -125,11 +125,6 @@ void PerformanceCounters::printCounters() const {
     }
 }
 
-// The divergence and branch statistics methods are kept as they are
-// but need to have their implementations verified to ensure they
-// compile correctly with the divergenceStats and branchStats members
-// defined in the PerformanceCounters class
-
 // Convenience methods for debugger
 CounterValue PerformanceCounters::getTotalInstructions() const {
     return getCounterValue(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);

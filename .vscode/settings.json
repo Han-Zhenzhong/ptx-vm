@@ -8,6 +8,7 @@
         "*.sk": "ttml",
         "stdexcept": "cpp",
         "vector": "cpp",
-        "cstdlib": "cpp"
+        "cstdlib": "cpp",
+        "memory": "cpp"
     }
 }

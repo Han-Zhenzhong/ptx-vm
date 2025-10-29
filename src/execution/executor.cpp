@@ -13,18 +13,10 @@
 // Private implementation class
 class PTXExecutor::Impl {
 public:
-    Impl() {
-        // Initialize components
-        m_registerBank = std::make_unique<RegisterBank>();
-        if (!m_registerBank->initialize()) {
-            throw std::runtime_error("Failed to initialize register bank");
-        }
+    Impl() : m_registerBank(nullptr), m_memorySubsystem(nullptr), m_performanceCounters(nullptr) {
+        // Note: RegisterBank and MemorySubsystem will be set via setComponents()
+        // They are owned externally (by PTXVM)
         
-        m_memorySubsystem = std::make_unique<MemorySubsystem>();
-        if (!m_memorySubsystem->initialize(1024 * 1024, 64 * 1024, 64 * 1024)) {
-            throw std::runtime_error("Failed to initialize memory subsystem");
-        }
-
         // Initialize warp scheduler with default configuration
         m_warpScheduler = std::make_unique<WarpScheduler>(4, 32);
         if (!m_warpScheduler->initialize()) {
@@ -123,11 +115,30 @@ public:
                 const DecodedInstruction& instr = m_decodedInstructions[issueInfo.instructionIndex];
                 bool shouldExecute = m_predicateHandler->shouldExecute(instr);
                 if (shouldExecute) {
+                    // ✅ Set m_currentInstructionIndex to current PC before execution
+                    // This is needed for instructions that modify it (branch, call, ret)
+                    m_currentInstructionIndex = issueInfo.instructionIndex;
+                    size_t pcBefore = m_currentInstructionIndex;
+                    
                     bool result = executeDecodedInstruction(instr);
-                    m_warpScheduler->completeInstruction(issueInfo);
                     if (!result) {
                         std::cout << "Error executing instruction" << std::endl;
                         return false;
+                    }
+                    
+                    // ✅ Check if instruction modified PC (branch, call, ret)
+                    if (m_currentInstructionIndex != pcBefore) {
+                        // Instruction changed PC - sync to warp (don't auto-increment)
+                        m_warpScheduler->setCurrentPC(warpId, m_currentInstructionIndex);
+                    } else {
+                        // Normal instruction - let warp auto-increment PC
+                        m_warpScheduler->completeInstruction(issueInfo);
+                    }
+                    
+                    // ✅ Check if execution is complete (from ret instruction)
+                    if (m_executionComplete) {
+                        warpDone[warpId] = true;
+                        ++doneWarps;
                     }
                 } else {
                     m_performanceCounters->increment(PerformanceCounterIDs::PREDICATE_SKIPPED);
@@ -182,18 +193,11 @@ public:
         m_reconvergence->setControlFlowGraph(cfg);
     }
 
-    // Set register bank and memory subsystem
+    // Set register bank and memory subsystem (from external sources)
     void setComponents(RegisterBank& registerBank, MemorySubsystem& memorySubsystem) {
-        // Reinitialize with the same parameters
-        m_registerBank = std::make_unique<RegisterBank>();
-        m_registerBank->initialize(registerBank.getNumRegisters());
-        
-        m_memorySubsystem = std::make_unique<MemorySubsystem>();
-        m_memorySubsystem->initialize(
-            memorySubsystem.getMemorySize(MemorySpace::GLOBAL),
-            memorySubsystem.getMemorySize(MemorySpace::SHARED),
-            memorySubsystem.getMemorySize(MemorySpace::LOCAL)
-        );
+        // Use the externally provided components (owned by PTXVM)
+        m_registerBank = &registerBank;
+        m_memorySubsystem = &memorySubsystem;
     }
 
     void setPerformanceCounters(PerformanceCounters& performanceCounters)
@@ -1763,30 +1767,6 @@ public:
         }
     }
     
-    // Handle synchronization points
-    void handleSynchronization(const DecodedInstruction& instruction) {
-        // At a synchronization point, we need to check for divergence
-        // and determine which threads can proceed
-        
-        // Get the predicate handler
-        PredicateHandler* predicateHandler = m_predicateHandler.get();
-        
-        // If there's an active divergence stack entry, we may need to reconverge
-        size_t joinPC;
-        uint64_t savedMask;
-        uint64_t savedDivergentMask;
-        
-        if (!predicateHandler->isDivergenceStackEmpty()) {
-            // Pop the top divergence point
-            if (predicateHandler->popDivergencePoint(joinPC, savedMask, savedDivergentMask)) {
-                // Check if we've reached the join point
-                // Note: We would need access to currentPC to do this properly
-                // For now, we'll just push it back
-                predicateHandler->pushDivergencePoint(joinPC, savedMask, savedDivergentMask);
-            }
-        }
-    }
-    
     // Reconstruct control flow graph from PTX
     bool buildControlFlowGraphFromPTX(const std::vector<DecodedInstruction>& instructions) {
         // For each instruction, track where branches go and where they come from
@@ -2084,9 +2064,9 @@ public:
         return false;
     }
     
-    // Core components
-    std::unique_ptr<RegisterBank> m_registerBank;
-    std::unique_ptr<MemorySubsystem> m_memorySubsystem;
+    // Core components (using external instances)
+    RegisterBank* m_registerBank;
+    MemorySubsystem* m_memorySubsystem;
     
     // Program state
     std::vector<PTXInstruction> m_ptInstructions;
@@ -2139,8 +2119,8 @@ public:
 
 PTXExecutor::PTXExecutor(RegisterBank& registerBank, MemorySubsystem& memorySubsystem, PerformanceCounters& performanceCounters) 
     : pImpl(std::make_unique<Impl>()) {
-    // Override the default register bank and memory subsystem with the provided ones
-    // pImpl->setComponents(registerBank, memorySubsystem);
+    // Set the external components
+    pImpl->setComponents(registerBank, memorySubsystem);
     pImpl->setPerformanceCounters(performanceCounters);
 }
 
@@ -2195,7 +2175,15 @@ bool PTXExecutor::initialize(const PTXProgram& program) {
         if (entryFuncIndex < program.functions.size()) {
             const PTXFunction& entryFunc = program.functions[entryFuncIndex];
             pImpl->setCurrentInstructionIndex(entryFunc.startInstructionIndex);
-            std::cout << "  Starting execution from entry point: " << entryFunc.name << std::endl;
+            
+            // ✅ Set all warps' PC to the entry function's start instruction
+            uint32_t numWarps = pImpl->m_warpScheduler->getNumWarps();
+            for (uint32_t warpId = 0; warpId < numWarps; ++warpId) {
+                pImpl->m_warpScheduler->setCurrentPC(warpId, entryFunc.startInstructionIndex);
+            }
+            
+            std::cout << "  Starting execution from entry point: " << entryFunc.name 
+                     << " (PC = " << entryFunc.startInstructionIndex << ")" << std::endl;
         }
     }
     

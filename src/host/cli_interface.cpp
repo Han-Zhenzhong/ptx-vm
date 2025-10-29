@@ -145,10 +145,6 @@ public:
             breakCommand(args);
         } else if (cmd == "watch" || cmd == "w") {
             watchCommand(args);
-        } else if (cmd == "profile") {
-            profileCommand(args);
-        } else if (cmd == "dump") {
-            dumpCommand(args);
         } else if (cmd == "quit" || cmd == "exit" || cmd == "q") {
             quitCommand(args);
             return true; // Exit the CLI
@@ -182,8 +178,6 @@ public:
             printMessage("  launch <kernel> <params...> - Launch kernel (auto-detects param types from PTX)");
             printMessage("  break (b) <address>    - Set a breakpoint");
             printMessage("  watch (w) <address>    - Set a watchpoint");
-            printMessage("  profile <filename>     - Start profiling");
-            printMessage("  dump                    - Dump execution statistics");
             printMessage("  visualize (vis) <type>  - Display visualizations (warp, memory, performance)");
             printMessage("  quit (exit, q)         - Quit the VM");
             printMessage("  clear (cls)            - Clear the screen");
@@ -262,11 +256,6 @@ public:
             } else if (cmd == "watch" || cmd == "w") {
                 printMessage("watch <address> - Set a watchpoint at the specified address");
                 printMessage("Example: watch 0x1000");
-            } else if (cmd == "profile") {
-                printMessage("profile <filename> - Start profiling session");
-                printMessage("Example: profile performance.csv");
-            } else if (cmd == "dump") {
-                printMessage("dump - Dump execution statistics and analysis");
             } else if (cmd == "visualize" || cmd == "vis") {
                 printMessage("visualize <type> - Display visualizations");
                 printMessage("Types:");
@@ -852,38 +841,6 @@ public:
         } catch (...) {
             printError("✗ Unknown kernel launch error");
         }
-    }
-
-    // Profiling command - control profiling
-    void profileCommand(const std::vector<std::string>& args) {
-        if (args.empty()) {
-            printError("Usage: profile <filename>");
-            return;
-        }
-        
-        // Start profiling
-        if (m_vm->startProfiling(args[0])) {
-            std::ostringstream oss;
-            oss << "Started profiling. Results will be saved to " << args[0];
-            printMessage(oss.str());
-        } else {
-            printError("Failed to start profiling.");
-        }
-    }
-
-    // Dump command - dump execution statistics
-    void dumpCommand(const std::vector<std::string>& args) {
-        // Dump execution statistics
-        m_vm->dumpExecutionStats();
-        
-        // Dump instruction mix analysis
-        m_vm->dumpInstructionMixAnalysis();
-        
-        // Dump memory access analysis
-        m_vm->dumpMemoryAccessAnalysis();
-        
-        // Dump warp execution analysis
-        m_vm->dumpWarpExecutionAnalysis();
     }
 
     // Quit command - exit the VM
