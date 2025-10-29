@@ -77,8 +77,3 @@ endif()
 if(BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
-
-# Build documentation if enabled
-if(BUILD_DOCUMENTATION)
-    add_subdirectory(docs)
-endif()
