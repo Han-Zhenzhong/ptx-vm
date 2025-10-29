@@ -82,30 +82,6 @@ public:
     
     // Check if a program is loaded
     bool isProgramLoaded() const;
-        
-    // Step through the program
-    bool step();
-    
-    // Set a breakpoint
-    bool setBreakpoint(size_t address);
-    
-    // Set a watchpoint
-    bool setWatchpoint(uint64_t address);
-    
-    // Print registers
-    void printRegisters() const;
-    
-    // Print all registers
-    void printAllRegisters() const;
-    
-    // Print predicate registers
-    void printPredicateRegisters() const;
-    
-    // Print program counter
-    void printProgramCounter() const;
-    
-    // Print memory contents
-    void printMemory(uint64_t address, size_t size) const;
     
     // Start profiling
     bool startProfiling(const std::string& filename);
@@ -113,18 +89,6 @@ public:
     // Dump statistics
     void dumpStatistics() const;
     
-    // List instructions
-    void listInstructions(size_t start, size_t count) const;
-    
-    // Print warp visualization
-    void printWarpVisualization() const;
-    
-    // Print memory visualization
-    void printMemoryVisualization() const;
-    
-    // Print performance counters
-    void printPerformanceCounters() const;
-
     // CUDA-like API functions
     
     // Device management
@@ -133,18 +97,6 @@ public:
     CUresult cuDeviceGetCount(int* count);
     CUresult cuDeviceGetName(char* name, int len, CUdevice device);
     CUresult cuDeviceComputeCapability(int* major, int* minor, CUdevice device);
-    
-    // Context management
-    CUresult cuCtxCreate(CUcontext* pctx, unsigned int flags, CUdevice device);
-    CUresult cuCtxDestroy(CUcontext ctx);
-    CUresult cuCtxPushCurrent(CUcontext ctx);
-    CUresult cuCtxPopCurrent(CUcontext* pctx);
-    
-    // Module management (PTX programs)
-    CUresult cuModuleLoad(CUmodule* module, const char* fname);
-    CUresult cuModuleLoadData(CUmodule* module, const void* image);
-    CUresult cuModuleUnload(CUmodule module);
-    CUresult cuModuleGetFunction(CUfunction* hfunc, CUmodule module, const char* name);
     
     // Memory management
     CUresult cuMemAlloc(CUdeviceptr* dptr, size_t bytesize);
@@ -160,20 +112,6 @@ public:
                           unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ,
                           unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ,
                           unsigned int sharedMemBytes, CUstream hStream, void** kernelParams, void** extra);
-    
-    CUresult cuStreamCreate(CUstream* phStream, unsigned int flags);
-    CUresult cuStreamQuery(CUstream hStream);
-    CUresult cuStreamSynchronize(CUstream hStream);
-    CUresult cuStreamDestroy(CUstream hStream);
-    
-    // Profiling and debugging
-    CUresult cuProfilerStart();
-    CUresult cuProfilerStop();
-    
-    // Visualization methods
-    void visualizeWarps();
-    void visualizeMemory();
-    void visualizePerformance();
     
 private:
     // Private implementation details

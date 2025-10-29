@@ -6,7 +6,6 @@
 #include <cctype>
 #include <fstream>
 #include <cstring>
-#include "host_api.hpp"
 
 // Private implementation class
 class CLIInterface::Impl {
@@ -407,19 +406,25 @@ public:
             }
             
             // Call the VM's memory allocation function
-            HostAPI hostAPI;
-            CUdeviceptr ptr;
-            CUresult result = hostAPI.cuMemAlloc(&ptr, size);
+            // Simple allocation strategy: track allocations manually
+            static uint64_t allocationOffset = 0x10000; // Start at 64KB
             
-            if (result == CUDA_SUCCESS) {
-                std::ostringstream oss;
-                oss << "Allocated " << size << " bytes at address 0x" << std::hex << ptr << std::dec;
-                printMessage(oss.str());
-            } else {
-                std::ostringstream oss;
-                oss << "Failed to allocate memory. Error code: " << result;
-                printError(oss.str());
+            MemorySubsystem& memSys = m_vm->getMemorySubsystem();
+            size_t globalMemSize = memSys.getMemorySize(MemorySpace::GLOBAL);
+            
+            if (allocationOffset + size > globalMemSize) {
+                printError("Out of memory.");
+                return;
             }
+            
+            CUdeviceptr ptr = allocationOffset;
+            allocationOffset += size;
+            // Ensure 8-byte alignment
+            allocationOffset = (allocationOffset + 7) & ~7;
+            
+            std::ostringstream oss;
+            oss << "Allocated " << size << " bytes at address 0x" << std::hex << ptr << std::dec;
+            printMessage(oss.str());
         } catch (...) {
             printError("Invalid size format.");
         }
@@ -453,30 +458,18 @@ public:
                 return;
             }
             
-            // Call the VM's memory copy function
-            HostAPI hostAPI;
-            // For now, we'll simulate a simple memory copy by creating a temporary buffer
-            // In a more complete implementation, we would copy between actual VM memory locations
+            // Copy memory using VM's memory subsystem
+            MemorySubsystem& memSys = m_vm->getMemorySubsystem();
             std::vector<uint8_t> tempBuffer(size);
             
-            // Simulate reading from source (in a real implementation, this would read from VM memory)
-            CUresult readResult = hostAPI.cuMemcpyDtoH(tempBuffer.data(), src, size);
-            
-            if (readResult != CUDA_SUCCESS) {
-                std::ostringstream oss;
-                oss << "Failed to read from source address 0x" << std::hex << src << std::dec;
-                printError(oss.str());
-                return;
+            // Read from source
+            for (size_t i = 0; i < size; ++i) {
+                tempBuffer[i] = memSys.read<uint8_t>(MemorySpace::GLOBAL, src + i);
             }
             
-            // Simulate writing to destination (in a real implementation, this would write to VM memory)
-            CUresult writeResult = hostAPI.cuMemcpyHtoD(dest, tempBuffer.data(), size);
-            
-            if (writeResult != CUDA_SUCCESS) {
-                std::ostringstream oss;
-                oss << "Failed to write to destination address 0x" << std::hex << dest << std::dec;
-                printError(oss.str());
-                return;
+            // Write to destination
+            for (size_t i = 0; i < size; ++i) {
+                memSys.write<uint8_t>(MemorySpace::GLOBAL, dest + i, tempBuffer[i]);
             }
             
             std::ostringstream oss;
@@ -510,20 +503,13 @@ public:
             }
             
             // Write the value to memory
-            HostAPI hostAPI;
+            MemorySubsystem& memSys = m_vm->getMemorySubsystem();
             uint8_t byteValue = static_cast<uint8_t>(value);
-            CUresult result = hostAPI.cuMemcpyHtoD(address, &byteValue, sizeof(byteValue));
+            memSys.write<uint8_t>(MemorySpace::GLOBAL, address, byteValue);
             
-            if (result == CUDA_SUCCESS) {
-                std::ostringstream oss;
-                oss << "Wrote value " << value << " to address 0x" << std::hex << address << std::dec;
-                printMessage(oss.str());
-            } else {
-                std::ostringstream oss;
-                oss << "Failed to write to address 0x" << std::hex << address << std::dec 
-                    << ". Error code: " << result;
-                printError(oss.str());
-            }
+            std::ostringstream oss;
+            oss << "Wrote value " << value << " to address 0x" << std::hex << address << std::dec;
+            printMessage(oss.str());
         } catch (...) {
             printError("Invalid address or value format.");
         }
@@ -575,19 +561,14 @@ public:
             }
             
             // Write values to memory
-            HostAPI hostAPI;
-            CUresult result = hostAPI.cuMemcpyHtoD(address, values.data(), count);
-            
-            if (result == CUDA_SUCCESS) {
-                std::ostringstream oss;
-                oss << "Filled " << count << " bytes at address 0x" << std::hex << address << std::dec;
-                printMessage(oss.str());
-            } else {
-                std::ostringstream oss;
-                oss << "Failed to fill memory at address 0x" << std::hex << address << std::dec 
-                    << ". Error code: " << result;
-                printError(oss.str());
+            MemorySubsystem& memSys = m_vm->getMemorySubsystem();
+            for (size_t i = 0; i < count; ++i) {
+                memSys.write<uint8_t>(MemorySpace::GLOBAL, address + i, values[i]);
             }
+            
+            std::ostringstream oss;
+            oss << "Filled " << count << " bytes at address 0x" << std::hex << address << std::dec;
+            printMessage(oss.str());
         } catch (...) {
             printError("Invalid address, count, or value format.");
         }
@@ -813,25 +794,63 @@ public:
         printMessage("Grid dimensions: 1 x 1 x 1");
         printMessage("Block dimensions: 32 x 1 x 1");
         
-        HostAPI hostAPI;
-        CUresult result = hostAPI.cuLaunchKernel(
-            1, // function handle (simplified)
-            1, 1, 1, // grid dimensions
-            32, 1, 1, // block dimensions
-            0, // shared memory
-            nullptr, // stream
-            kernelParams.data(), // kernel parameters
-            nullptr // extra
-        );
-        
-        if (result == CUDA_SUCCESS) {
-            printMessage("");
-            printMessage("✓ Kernel launched successfully");
-            printMessage("Use 'memory <address> <size>' to view results");
-        } else {
+        try {
+            PTXExecutor& executor = m_vm->getExecutor();
+            
+            // Copy kernel parameters to parameter memory
+            if (!kernelParams.empty() && executor.hasProgramStructure()) {
+                const PTXProgram& program = executor.getProgram();
+                
+                if (!program.functions.empty()) {
+                    const PTXFunction& entryFunc = program.functions[0];
+                    MemorySubsystem& mem = executor.getMemorySubsystem();
+                    
+                    printMessage("Setting up " + std::to_string(entryFunc.parameters.size()) + " kernel parameters...");
+                    
+                    // Copy each parameter to parameter memory
+                    size_t offset = 0;
+                    for (size_t i = 0; i < entryFunc.parameters.size(); ++i) {
+                        const PTXParameter& param = entryFunc.parameters[i];
+                        
+                        if (kernelParams[i] != nullptr) {
+                            std::ostringstream poss;
+                            poss << "  Parameter " << i << " (" << param.name << "): "
+                                 << "type=" << param.type << ", size=" << param.size 
+                                 << ", offset=" << offset;
+                            printMessage(poss.str());
+                            
+                            // Copy parameter data to parameter memory (base address 0x1000)
+                            const uint8_t* paramData = static_cast<const uint8_t*>(kernelParams[i]);
+                            for (size_t j = 0; j < param.size; ++j) {
+                                mem.write<uint8_t>(MemorySpace::PARAMETER, 
+                                                  0x1000 + offset + j, 
+                                                  paramData[j]);
+                            }
+                        }
+                        
+                        offset += param.size;
+                    }
+                    
+                    printMessage("Kernel parameters successfully copied to parameter memory");
+                }
+            }
+
+            // Execute kernel
+            bool success = m_vm->run();
+            
+            if (success) {
+                printMessage("");
+                printMessage("✓ Kernel launched successfully");
+                printMessage("Use 'memory <address> <size>' to view results");
+            } else {
+                printError("✗ Kernel execution failed");
+            }
+        } catch (const std::exception& e) {
             std::ostringstream oss;
-            oss << "✗ Kernel launch failed with error code: " << result;
+            oss << "✗ Kernel launch error: " << e.what();
             printError(oss.str());
+        } catch (...) {
+            printError("✗ Unknown kernel launch error");
         }
     }
 
@@ -998,8 +1017,8 @@ public:
     
     // Execution state
     std::string m_loadedProgram;
-    size_t m_currentPC = 0;
-    bool m_executing = false;
+    size_t m_currentPC = 0; // TODO: Update with actual PC tracking
+    bool m_executing = false; // TODO: Update with actual execution state
 };
 
 CLIInterface::CLIInterface() : pImpl(std::make_unique<Impl>()) {}

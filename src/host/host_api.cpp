@@ -6,7 +6,6 @@
 #include <cstring>
 #include "vm.hpp"
 #include "cuda_binary_loader.hpp"
-#include "debugger.hpp"
 #include "execution/executor.hpp"  // Include for PTXExecutor complete type
 #include "registers/register_bank.hpp"  // Include for RegisterBank complete type
 #include "instruction_types.hpp"  // Include for InstructionTypes enum
@@ -14,7 +13,7 @@
 // Private implementation class
 class HostAPI::Impl {
 public:
-    Impl() : m_vm(nullptr), m_debugger(nullptr), m_isProgramLoaded(false) {}
+    Impl() : m_vm(nullptr), m_isProgramLoaded(false) {}
     
     ~Impl() = default;
 
@@ -25,7 +24,6 @@ public:
             return false;
         }
         
-        m_debugger = std::make_unique<Debugger>(&m_vm->getExecutor());
         return true;
     }
 
@@ -47,99 +45,6 @@ public:
         return m_isProgramLoaded;
     }
 
-    // Step through the program
-    bool step() {
-        if (!m_isProgramLoaded) {
-            return false;
-        }
-        
-        return m_vm->getExecutor().executeSingleInstruction();
-    }
-
-    // Set a breakpoint
-    bool setBreakpoint(size_t address) {
-        if (!m_debugger) {
-            return false;
-        }
-        
-        return m_debugger->setBreakpoint(address);
-    }
-
-    // Set a watchpoint
-    bool setWatchpoint(uint64_t address) {
-        // Watchpoints not yet implemented
-        return false;
-    }
-
-    // Print registers
-    void printRegisters() const {
-        if (!m_vm) {
-            return;
-        }
-        
-        const RegisterBank& registers = m_vm->getExecutor().getRegisterBank();
-        std::cout << "General Purpose Registers:" << std::endl;
-        for (size_t i = 0; i < 8; ++i) {
-            uint64_t value = registers.readRegister(i);
-            std::cout << "  %r" << i << " = 0x" << std::hex << value << std::dec << " (" << value << ")" << std::endl;
-        }
-    }
-
-    // Print all registers
-    void printAllRegisters() const {
-        if (!m_vm) {
-            return;
-        }
-        
-        const RegisterBank& registers = m_vm->getExecutor().getRegisterBank();
-        std::cout << "General Purpose Registers:" << std::endl;
-        for (size_t i = 0; i < registers.getNumRegisters(); ++i) {
-            uint64_t value = registers.readRegister(i);
-            std::cout << "  %r" << i << " = 0x" << std::hex << value << std::dec << " (" << value << ")" << std::endl;
-        }
-    }
-
-    // Print predicate registers
-    void printPredicateRegisters() const {
-        if (!m_vm) {
-            return;
-        }
-        
-        const RegisterBank& registers = m_vm->getExecutor().getRegisterBank();
-        std::cout << "Predicate Registers:" << std::endl;
-        for (size_t i = 0; i < 8; ++i) {
-            bool value = registers.readPredicate(i);
-            std::cout << "  %p" << i << " = " << (value ? "true" : "false") << std::endl;
-        }
-    }
-
-    // Print program counter
-    void printProgramCounter() const {
-        if (!m_vm) {
-            return;
-        }
-        
-        std::cout << "Program Counter: 0x" << std::hex << m_vm->getExecutor().getCurrentInstructionIndex() << std::dec << std::endl;
-    }
-
-    // Print memory contents
-    void printMemory(uint64_t address, size_t size) const {
-        if (!m_vm) {
-            return;
-        }
-        
-        std::cout << "Memory contents at 0x" << std::hex << address << std::dec << ":" << std::endl;
-        for (size_t i = 0; i < size; ++i) {
-            uint8_t value = 0;
-            m_vm->getMemorySubsystem().read<uint8_t>(MemorySpace::GLOBAL, address + i);
-            if (i % 16 == 0) {
-                std::cout << std::endl << "  0x" << std::hex << (address + i) << ": ";
-            }
-            std::cout << std::hex << std::setfill('0') << std::setw(2) << (int)value << " ";
-        }
-        std::cout << std::dec << std::endl;
-    }
-
     // Start profiling
     bool startProfiling(const std::string& filename) {
         if (!m_vm) {
@@ -156,38 +61,6 @@ public:
         }
         
         m_vm->dumpExecutionStats();
-    }
-
-    // List instructions
-    void listInstructions(size_t start, size_t count) const {
-        // Instructions listing not yet implemented
-    }
-
-    // Print warp visualization
-    void printWarpVisualization() const {
-        if (!m_vm) {
-            return;
-        }
-        
-        m_vm->visualizeWarps();
-    }
-
-    // Print memory visualization
-    void printMemoryVisualization() const {
-        if (!m_vm) {
-            return;
-        }
-        
-        m_vm->visualizeMemory();
-    }
-
-    // Print performance counters
-    void printPerformanceCounters() const {
-        if (!m_vm) {
-            return;
-        }
-        
-        m_vm->visualizePerformance();
     }
     
     // Memory management functions
@@ -347,7 +220,6 @@ public:
 
 private:
     std::unique_ptr<PTXVM> m_vm;
-    std::unique_ptr<Debugger> m_debugger;
     std::string m_programFilename;
     bool m_isProgramLoaded;
 };
@@ -368,60 +240,12 @@ bool HostAPI::isProgramLoaded() const {
     return pImpl->isProgramLoaded();
 }
 
-bool HostAPI::step() {
-    return pImpl->step();
-}
-
-bool HostAPI::setBreakpoint(size_t address) {
-    return pImpl->setBreakpoint(address);
-}
-
-bool HostAPI::setWatchpoint(uint64_t address) {
-    return pImpl->setWatchpoint(address);
-}
-
-void HostAPI::printRegisters() const {
-    pImpl->printRegisters();
-}
-
-void HostAPI::printAllRegisters() const {
-    pImpl->printAllRegisters();
-}
-
-void HostAPI::printPredicateRegisters() const {
-    pImpl->printPredicateRegisters();
-}
-
-void HostAPI::printProgramCounter() const {
-    pImpl->printProgramCounter();
-}
-
-void HostAPI::printMemory(uint64_t address, size_t size) const {
-    pImpl->printMemory(address, size);
-}
-
 bool HostAPI::startProfiling(const std::string& filename) {
     return pImpl->startProfiling(filename);
 }
 
 void HostAPI::dumpStatistics() const {
     pImpl->dumpStatistics();
-}
-
-void HostAPI::listInstructions(size_t start, size_t count) const {
-    pImpl->listInstructions(start, count);
-}
-
-void HostAPI::printWarpVisualization() const {
-    pImpl->printWarpVisualization();
-}
-
-void HostAPI::printMemoryVisualization() const {
-    pImpl->printMemoryVisualization();
-}
-
-void HostAPI::printPerformanceCounters() const {
-    pImpl->printPerformanceCounters();
 }
 
 // Implement CUDA-like API functions
@@ -474,76 +298,6 @@ CUresult HostAPI::cuDeviceComputeCapability(int* major, int* minor, CUdevice dev
     return CUDA_SUCCESS;
 }
 
-CUresult HostAPI::cuCtxCreate(CUcontext* pctx, unsigned int flags, CUdevice device) {
-    if (!pctx || device != 0) {
-        return CUDA_ERROR_INVALID_VALUE;
-    }
-    
-    *pctx = 1; // Simple context handle
-    return CUDA_SUCCESS;
-}
-
-CUresult HostAPI::cuCtxDestroy(CUcontext ctx) {
-    if (!ctx) {
-        return CUDA_ERROR_INVALID_CONTEXT;
-    }
-    
-    return CUDA_SUCCESS;
-}
-
-CUresult HostAPI::cuCtxPushCurrent(CUcontext ctx) {
-    // Context stack not implemented in this simple VM
-    return CUDA_SUCCESS;
-}
-
-CUresult HostAPI::cuCtxPopCurrent(CUcontext* pctx) {
-    if (pctx) {
-        *pctx = 1;
-    }
-    return CUDA_SUCCESS;
-}
-
-CUresult HostAPI::cuModuleLoad(CUmodule* module, const char* fname) {
-    if (!module || !fname) {
-        return CUDA_ERROR_INVALID_VALUE;
-    }
-    
-    // In our simple implementation, we'll just store an identifier
-    // A real implementation would parse and load the module
-    *module = 1;  // Using a simple numeric identifier
-    return CUDA_SUCCESS;
-}
-
-CUresult HostAPI::cuModuleLoadData(CUmodule* module, const void* image) {
-    if (!module || !image) {
-        return CUDA_ERROR_INVALID_VALUE;
-    }
-    
-    // Not implemented in this simple VM
-    *module = 1;  // Using a simple numeric identifier
-    return CUDA_SUCCESS;
-}
-
-CUresult HostAPI::cuModuleUnload(CUmodule module) {
-    if (!module) {
-        return CUDA_ERROR_INVALID_VALUE;
-    }
-    
-    // In a real implementation, this would clean up module resources
-    return CUDA_SUCCESS;
-}
-
-CUresult HostAPI::cuModuleGetFunction(CUfunction* hfunc, CUmodule module, const char* name) {
-    if (!hfunc || !module || !name) {
-        return CUDA_ERROR_INVALID_VALUE;
-    }
-    
-    // In our simple implementation, we'll just store a function identifier
-    // In a real implementation, this would map to actual function data
-    *hfunc = 1;  // Using a simple numeric identifier
-    return CUDA_SUCCESS;
-}
-
 CUresult HostAPI::cuMemAlloc(CUdeviceptr* dptr, size_t bytesize) {
     return pImpl->cuMemAlloc(dptr, bytesize);
 }
@@ -567,47 +321,4 @@ CUresult HostAPI::cuLaunchKernel(CUfunction f,
     return pImpl->cuLaunchKernel(f, gridDimX, gridDimY, gridDimZ, 
                                 blockDimX, blockDimY, blockDimZ,
                                 sharedMemBytes, hStream, kernelParams, extra);
-}
-
-CUresult HostAPI::cuStreamCreate(CUstream* phStream, unsigned int flags) {
-    if (!phStream) {
-        return CUDA_ERROR_INVALID_VALUE;
-    }
-    
-    *phStream = reinterpret_cast<CUstream>(0x1);
-    return CUDA_SUCCESS;
-}
-
-CUresult HostAPI::cuStreamQuery(CUstream hStream) {
-    return CUDA_SUCCESS;
-}
-
-CUresult HostAPI::cuStreamSynchronize(CUstream hStream) {
-    return CUDA_SUCCESS;
-}
-
-CUresult HostAPI::cuStreamDestroy(CUstream hStream) {
-    return CUDA_SUCCESS;
-}
-
-CUresult HostAPI::cuProfilerStart() {
-    // Profiling functionality not implemented
-    return CUDA_SUCCESS;
-}
-
-CUresult HostAPI::cuProfilerStop() {
-    // Profiling functionality not implemented
-    return CUDA_SUCCESS;
-}
-
-void HostAPI::visualizeWarps() {
-    pImpl->printWarpVisualization();
-}
-
-void HostAPI::visualizeMemory() {
-    pImpl->printMemoryVisualization();
-}
-
-void HostAPI::visualizePerformance() {
-    pImpl->printPerformanceCounters();
 }
