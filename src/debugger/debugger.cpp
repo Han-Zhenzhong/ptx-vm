@@ -1,4 +1,5 @@
 #include "debugger.hpp"
+#include "logger.hpp"
 #include <iostream>
 #include <iomanip>
 #include <bitset>
@@ -119,7 +120,7 @@ public:
         void* memory = memorySubsystem.getMemoryBuffer(space);
         
         if (!memory) {
-            std::cerr << "Invalid memory space" << std::endl;
+            Logger::error("Invalid memory space");
             return;
         }
         

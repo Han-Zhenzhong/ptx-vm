@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include "cli_interface.hpp"
+#include "logger.hpp"
 
 int main(int argc, char* argv[]) {
     try {
@@ -10,10 +11,10 @@ int main(int argc, char* argv[]) {
         // Run the CLI interface
         return cli.run(argc, argv);
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        Logger::error(std::string("Error: ") + e.what());
         return 1;
     } catch (...) {
-        std::cerr << "Unknown error occurred" << std::endl;
+        Logger::error("Unknown error occurred");
         return 1;
     }
 }

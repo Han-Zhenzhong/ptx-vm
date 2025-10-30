@@ -1,6 +1,12 @@
 # Developer Guide for PTX Virtual Machine
 
-**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
+**Authors**:     ├── logger              # Logging module
+    │   ├── logger.cpp
+    │   └── CMakeLists.txt
+    └── host
+        ├── cli_interface.cpp
+        ├── cuda_binary_loader.cpp
+        └── host_api.cppZhenzhong, TongyiLingma, GitHub Copilot  
 **Last Updated**: 2025-10-29
 
 ## Introduction
@@ -129,6 +135,17 @@ graph TD
 - Keep functions focused on single responsibilities
 - Write clear comments for complex logic
 - Document all public APIs
+
+### Logging Guidelines
+- Use the Logger class instead of `std::cout` and `std::cerr`
+- Choose appropriate log levels:
+  - `Logger::debug()` - Detailed debug information, internal state
+  - `Logger::info()` - High-level operation progress, normal flow
+  - `Logger::warning()` - Non-critical issues, deprecated features
+  - `Logger::error()` - Failures, exceptions, critical errors
+- Include relevant context in log messages (addresses, names, values)
+- Avoid logging in performance-critical loops
+- See [Logging System Documentation](../user_docs/logging_system.md) for details
 
 ### Git Commit Messages
 - Use conventional commits format:

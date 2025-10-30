@@ -26,6 +26,7 @@ option(BUILD_DOCUMENTATION "Build documentation" ON)
 add_compile_options(-g)
 
 # Add subdirectories
+add_subdirectory(src/logger)
 add_subdirectory(src/core)
 add_subdirectory(src/decoder)
 add_subdirectory(src/execution)
@@ -43,6 +44,7 @@ add_executable(ptx_vm
 
 # Link libraries to main executable
 target_link_libraries(ptx_vm
+    logger
     core
     decoder
     execution

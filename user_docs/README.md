@@ -30,6 +30,7 @@
 
 ### 功能特性
 - **visualization_features.md** - 可视化功能说明
+- **logging_system.md** - 日志系统文档（级别控制、配置、最佳实践）
 
 ### 教程和指南目录
 - **user_guide/** - 用户指南详细教程目录

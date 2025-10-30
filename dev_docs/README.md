@@ -24,6 +24,7 @@
 - **param_auto_inference_implementation_summary.md** - 参数自动推断实现总结
 - **loadAndExecuteProgram_fix.md** - 程序加载和执行修复说明
 - **new_features_implementation_guide.md** - 新功能实现指南
+- **logging_system_implementation.md** - 日志系统实现总结
 
 ### 解析器和编译器
 - **ptx_parser_complete_design.md** - PTX 解析器完整设计

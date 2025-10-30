@@ -18,6 +18,7 @@ set(SRCS
 
 # Dependencies
 target_link_libraries(host PRIVATE
+    logger
     core
     optimizer
 )

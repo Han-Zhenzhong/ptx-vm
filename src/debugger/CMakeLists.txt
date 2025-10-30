@@ -11,6 +11,7 @@ target_include_directories(debugger PUBLIC
 
 # Dependencies
 target_link_libraries(debugger PRIVATE
+    logger
     core
     execution
 )

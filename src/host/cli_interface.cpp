@@ -1,4 +1,5 @@
 #include "cli_interface.hpp"
+#include "logger.hpp"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -55,13 +56,68 @@ public:
 
     // Process command line arguments
     void processArguments(int argc, char* argv[]) {
+        // Parse command line options
+        int fileArgIndex = -1;
+        for (int i = 1; i < argc; i++) {
+            std::string arg = argv[i];
+            if (arg == "--log-level" || arg == "-l") {
+                if (i + 1 < argc) {
+                    std::string level = argv[i + 1];
+                    std::transform(level.begin(), level.end(), level.begin(), ::tolower);
+                    if (level == "debug") {
+                        Logger::setLogLevel(LogLevel::DEBUG);
+                    } else if (level == "info") {
+                        Logger::setLogLevel(LogLevel::INFO);
+                    } else if (level == "warning" || level == "warn") {
+                        Logger::setLogLevel(LogLevel::WARNING);
+                    } else if (level == "error") {
+                        Logger::setLogLevel(LogLevel::ERROR);
+                    } else {
+                        std::cerr << "Unknown log level: " << level << std::endl;
+                        std::cerr << "Valid levels: debug, info, warning, error" << std::endl;
+                    }
+                    i++; // Skip the level argument
+                } else {
+                    std::cerr << "Missing log level argument" << std::endl;
+                }
+            } else if (arg == "--help" || arg == "-h") {
+                printMessage("PTX VM - Virtual Machine for PTX Execution");
+                printMessage("");
+                printMessage("Usage: ptx_vm [options] [ptx_file]");
+                printMessage("");
+                printMessage("Options:");
+                printMessage("  -h, --help              Show this help message");
+                printMessage("  -l, --log-level LEVEL   Set log level (debug, info, warning, error)");
+                printMessage("                          Default: info");
+                printMessage("");
+                printMessage("If a PTX file is provided, it will be loaded automatically.");
+                printMessage("Otherwise, use the interactive mode with 'load' command.");
+                printMessage("");
+                std::exit(0);
+            } else if (arg[0] != '-') {
+                fileArgIndex = i;
+                break;
+            }
+        }
+        
         // Check if a program was specified on command line
-        if (argc > 1) {
+        if (fileArgIndex >= 0) {
             // Load the specified program
-            loadProgram(argv[1]);
+            loadProgram(argv[fileArgIndex]);
+            
+            // Check if there are unprocessed arguments after the file
+            bool hasExtraArgs = false;
+            for (int i = fileArgIndex + 1; i < argc; i++) {
+                std::string arg = argv[i];
+                if (arg != "--log-level" && arg != "-l" && 
+                    (i == 0 || (argv[i-1] != "--log-level" && argv[i-1] != "-l"))) {
+                    hasExtraArgs = true;
+                    break;
+                }
+            }
             
             // If there are more arguments, display warning about correct usage
-            if (argc > 2) {
+            if (hasExtraArgs) {
                 printMessage("");
                 printMessage("=================================================================");
                 printMessage("NOTICE: Additional command-line arguments are ignored.");
@@ -158,6 +214,8 @@ public:
             infoCommand(args);
         } else if (cmd == "visualize" || cmd == "vis") {
             visualizeCommand(args);
+        } else if (cmd == "loglevel" || cmd == "log") {
+            loglevelCommand(args);
         } else {
             std::ostringstream oss;
             oss << "Unknown command: " << command << ". Type 'help' for available commands.";
@@ -182,6 +240,7 @@ public:
             printMessage("  break (b) <address>    - Set a breakpoint");
             printMessage("  watch (w) <address>    - Set a watchpoint");
             printMessage("  visualize (vis) <type>  - Display visualizations (warp, memory, performance)");
+            printMessage("  loglevel (log) [level]  - Get or set log level (debug, info, warning, error)");
             printMessage("  quit (exit, q)         - Quit the VM");
             printMessage("  clear (cls)            - Clear the screen");
             printMessage("  version                 - Show version information");
@@ -1001,6 +1060,39 @@ public:
         oss.str("");
         oss << "Register utilization: " << m_vm->getRegisterAllocator().getRegisterUtilization() * 100 << "%";
         printMessage(oss.str());
+    }
+
+    // Log level command - get or set log level
+    void loglevelCommand(const std::vector<std::string>& args) {
+        if (args.empty()) {
+            // Display current log level
+            LogLevel current = Logger::getLogLevel();
+            std::ostringstream oss;
+            oss << "Current log level: " << Logger::levelToString(current);
+            printMessage(oss.str());
+            printMessage("Available levels: debug, info, warning, error");
+        } else {
+            // Set log level
+            std::string level = args[0];
+            std::transform(level.begin(), level.end(), level.begin(), ::tolower);
+            
+            if (level == "debug") {
+                Logger::setLogLevel(LogLevel::DEBUG);
+                printMessage("Log level set to DEBUG");
+            } else if (level == "info") {
+                Logger::setLogLevel(LogLevel::INFO);
+                printMessage("Log level set to INFO");
+            } else if (level == "warning" || level == "warn") {
+                Logger::setLogLevel(LogLevel::WARNING);
+                printMessage("Log level set to WARNING");
+            } else if (level == "error") {
+                Logger::setLogLevel(LogLevel::ERROR);
+                printMessage("Log level set to ERROR");
+            } else {
+                printError("Unknown log level: " + level);
+                printMessage("Valid levels: debug, info, warning, error");
+            }
+        }
     }
 
     // Visualize command - display visualization

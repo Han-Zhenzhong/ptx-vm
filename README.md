@@ -99,6 +99,23 @@ make
 > exit
 ```
 
+### Log Level Control
+```bash
+# Set log level via command line
+./ptx_vm --log-level debug program.ptx
+./ptx_vm -l info program.ptx
+
+# Change log level in interactive mode
+> loglevel debug    # Enable all logs
+> loglevel info     # Default level
+> loglevel warning  # Warnings and errors only
+> loglevel error    # Errors only
+```
+
+Available log levels: `debug`, `info` (default), `warning`, `error`
+
+For more details, see [Logging System Documentation](./user_docs/logging_system.md).
+
 ## Command Reference
 
 ### load
