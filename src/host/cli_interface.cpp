@@ -139,6 +139,8 @@ public:
             writeCommand(args);
         } else if (cmd == "fill") {
             fillCommand(args);
+        } else if (cmd == "memory" || cmd == "mem") {
+            memoryCommand(args);
         } else if (cmd == "launch") {
             launchCommand(args);
         } else if (cmd == "break" || cmd == "b") {
@@ -175,6 +177,7 @@ public:
             printMessage("  memcpy <dest> <src> <size> - Copy memory");
             printMessage("  write <address> <value> - Write a value to memory");
             printMessage("  fill <address> <count> <value1> [value2] ... - Fill memory with values");
+            printMessage("  memory (mem) <address> <size> - View memory contents");
             printMessage("  launch <kernel> <params...> - Launch kernel (auto-detects param types from PTX)");
             printMessage("  break (b) <address>    - Set a breakpoint");
             printMessage("  watch (w) <address>    - Set a watchpoint");
@@ -209,6 +212,11 @@ public:
                 printMessage("fill <address> <count> <value1> [value2] ... - Fill memory with values");
                 printMessage("Example: fill 0x10000 4 1 2 3 4");
                 printMessage("This command writes multiple byte values starting at the specified address.");
+            } else if (cmd == "memory" || cmd == "mem") {
+                printMessage("memory <address> <size> - View memory contents");
+                printMessage("Example: memory 0x10000 20");
+                printMessage("This command displays memory in hex dump format with ASCII representation.");
+                printMessage("If size is a multiple of 4, it also shows decoded int32 values.");
             } else if (cmd == "launch") {
                 printMessage("launch <kernel_name> [param1] [param2] ... - Launch a kernel");
                 printMessage("");
@@ -560,6 +568,87 @@ public:
             printMessage(oss.str());
         } catch (...) {
             printError("Invalid address, count, or value format.");
+        }
+    }
+
+    // Memory command - view memory contents
+    void memoryCommand(const std::vector<std::string>& args) {
+        if (args.size() < 2) {
+            printError("Usage: memory <address> <size>");
+            printError("Example: memory 0x10000 20");
+            return;
+        }
+        
+        try {
+            // Parse address
+            uint64_t address = std::stoull(args[0], nullptr, 0);
+            
+            // Parse size
+            size_t size = std::stoull(args[1], nullptr, 0);
+            
+            if (size == 0) {
+                printError("Size must be greater than 0.");
+                return;
+            }
+            
+            if (size > 1024 * 1024) { // 1MB limit
+                printError("Size must be less than 1MB.");
+                return;
+            }
+            
+            // Read memory using VM's memory subsystem
+            MemorySubsystem& memSys = m_vm->getMemorySubsystem();
+            
+            std::ostringstream oss;
+            oss << "\nMemory at 0x" << std::hex << std::setfill('0') << address 
+                << " (" << std::dec << size << " bytes):\n";
+            
+            // Display memory in hex dump format (16 bytes per line)
+            for (size_t offset = 0; offset < size; offset += 16) {
+                // Address
+                oss << "0x" << std::hex << std::setw(8) << std::setfill('0') 
+                    << (address + offset) << ": ";
+                
+                // Hex bytes
+                size_t lineSize = std::min<size_t>(16, size - offset);
+                std::vector<uint8_t> lineData(lineSize);
+                
+                for (size_t i = 0; i < lineSize; ++i) {
+                    uint8_t byte = memSys.read<uint8_t>(MemorySpace::GLOBAL, address + offset + i);
+                    lineData[i] = byte;
+                    oss << std::hex << std::setw(2) << std::setfill('0') << (int)byte << " ";
+                }
+                
+                // Padding if last line
+                for (size_t i = lineSize; i < 16; ++i) {
+                    oss << "   ";
+                }
+                
+                // ASCII representation
+                oss << " |";
+                for (size_t i = 0; i < lineSize; ++i) {
+                    char c = lineData[i];
+                    oss << (isprint(c) ? c : '.');
+                }
+                oss << "|";
+                
+                oss << "\n";
+            }
+            
+            // Decode as int32 values if size is multiple of 4
+            if (size >= 4 && size % 4 == 0) {
+                oss << "\nDecoded as int32_t values:\n";
+                for (size_t offset = 0; offset < size; offset += 4) {
+                    int32_t value = memSys.read<int32_t>(MemorySpace::GLOBAL, address + offset);
+                    oss << "  [0x" << std::hex << std::setw(8) << std::setfill('0') 
+                        << (address + offset) << "] " << std::dec << value 
+                        << " (0x" << std::hex << std::setw(8) << std::setfill('0') << value << ")\n";
+                }
+            }
+            
+            printMessage(oss.str());
+        } catch (...) {
+            printError("Invalid address or size format, or memory read error.");
         }
     }
 

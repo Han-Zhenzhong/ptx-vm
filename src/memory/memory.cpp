@@ -278,10 +278,12 @@ template uint8_t MemorySubsystem::read<uint8_t>(MemorySpace, AddressSpace) const
 template uint16_t MemorySubsystem::read<uint16_t>(MemorySpace, AddressSpace) const;
 template uint32_t MemorySubsystem::read<uint32_t>(MemorySpace, AddressSpace) const;
 template uint64_t MemorySubsystem::read<uint64_t>(MemorySpace, AddressSpace) const;
+template int32_t MemorySubsystem::read<int32_t>(MemorySpace, AddressSpace) const;
 template void MemorySubsystem::write<uint8_t>(MemorySpace, AddressSpace, const uint8_t&);
 template void MemorySubsystem::write<uint16_t>(MemorySpace, AddressSpace, const uint16_t&);
 template void MemorySubsystem::write<uint32_t>(MemorySpace, AddressSpace, const uint32_t&);
 template void MemorySubsystem::write<uint64_t>(MemorySpace, AddressSpace, const uint64_t&);
+template void MemorySubsystem::write<int32_t>(MemorySpace, AddressSpace, const int32_t&);
 
 void* MemorySubsystem::getMemoryBuffer(MemorySpace space) {
     auto it = pImpl->memorySpaces.find(space);
