@@ -4,10 +4,6 @@
 #include <iostream>
 #include "memory/memory.hpp"  // Include full definition here
 
-// Base address in the VM address space reserved for kernel parameter memory.
-// Ensure this is a CUdeviceptr so it can be assigned directly to variables of that type.
-static constexpr CUdeviceptr PARAMETER_MEMORY_BASE = static_cast<CUdeviceptr>(0x10000ULL);
-
 // Explicitly define the deleter for MemorySubsystem since we're using Pimpl
 // This prevents the compiler from trying to generate a default deleter which requires complete type
 struct MemorySubsystemDeleter {
@@ -102,57 +98,87 @@ void PTXVM::setKernelParameters(const std::vector<KernelParameter>& parameters) 
 
 bool PTXVM::setupKernelParameters() {
     // Setup kernel parameters in VM memory
-    // In a real implementation, this would:
-    // 1. Allocate parameter memory space
-    // 2. Copy parameter data to that space
-    // 3. Set up parameter mappings for the kernel to access
-    
-    CUdeviceptr paramBaseAddr = PARAMETER_MEMORY_BASE;
-    
+    // Parameters are written to the PARAMETER memory space at base address 0x1000
+    // For this implementation:
+    // - param.devicePtr contains the actual parameter VALUE (e.g., a pointer or scalar)
+    // - param.size is the size of the parameter in bytes
+    // - param.offset is the offset within parameter memory
+        
     for (size_t i = 0; i < pImpl->m_kernelParameters.size(); ++i) {
         const auto& param = pImpl->m_kernelParameters[i];
         
-        // Copy parameter data from device memory to parameter memory space
+        // Write parameter value directly to parameter memory space
+        // param.devicePtr contains the value to write (e.g., a pointer address)
         try {
+            // Write the parameter value byte-by-byte to parameter memory
+            // Note: The memory subsystem uses buffer-relative addressing (starting at 0),
+            // so we use param.offset directly, not paramBaseAddr + param.offset
+            CUdeviceptr paramValue = param.devicePtr;
             for (size_t j = 0; j < param.size; ++j) {
-                uint8_t value = pImpl->m_memorySubsystem->read<uint8_t>(MemorySpace::GLOBAL, param.devicePtr + j);
-                pImpl->m_memorySubsystem->write<uint8_t>(MemorySpace::GLOBAL, paramBaseAddr + param.offset + j, value);
+                uint8_t byte = static_cast<uint8_t>((paramValue >> (j * 8)) & 0xFF);
+                pImpl->m_memorySubsystem->write<uint8_t>(MemorySpace::PARAMETER, 
+                                                         param.offset + j, 
+                                                         byte);
             }
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to copy parameter " << i << " to parameter memory space: " 
+                      << e.what() << std::endl;
+            return false;
         } catch (...) {
             std::cerr << "Failed to copy parameter " << i << " to parameter memory space" << std::endl;
             return false;
         }
     }
     
-    // Map parameters to registers for direct access
-    mapKernelParametersToRegisters();
+    // Note: We do NOT pre-map parameters to registers.
+    // PTX code will use ld.param instructions to load parameters dynamically.
+    // The old mapKernelParametersToRegisters() was conceptually incorrect.
     
     std::cout << "Set up " << pImpl->m_kernelParameters.size() << " kernel parameters in memory" << std::endl;
     return true;
 }
 
 void PTXVM::mapKernelParametersToRegisters() {
-    // Map kernel parameters to registers so they can be accessed directly
-    // This is a simplified implementation that maps each parameter to a register
-    // In a more sophisticated implementation, this would depend on the PTX function signature
+    // DEPRECATED: This function is no longer needed.
+    // 
+    // In real PTX execution, parameters are NOT pre-mapped to registers.
+    // Instead, PTX code uses ld.param instructions to load parameters on-demand.
+    // 
+    // Example from simple_math_example.ptx:
+    //   ld.param.u64 %r0, [result_ptr];
+    // 
+    // This instruction will:
+    // 1. Look up "result_ptr" in the parameter space
+    // 2. Read the value from PARAMETER memory at the appropriate offset
+    // 3. Store it in register %r0
+    // 
+    // The previous implementation was incorrect because:
+    // - It wrote PARAMETER_MEMORY_BASE + offset to registers, but the ld.param
+    //   instruction expects the actual parameter VALUE, not an address
+    // - It arbitrarily mapped parameters to registers r0, r1, r2... which
+    //   conflicts with how PTX code actually declares and uses registers
     
-    RegisterBank& registerBank = pImpl->m_executor->getRegisterBank();
-    
-    for (size_t i = 0; i < pImpl->m_kernelParameters.size() && i < 32; ++i) {
-        const auto& param = pImpl->m_kernelParameters[i];
-        
-        // For pointer parameters, store the pointer value in a register
-        // For value parameters, we would need to read the value from parameter memory
-        // In this simplified implementation, we'll store the parameter memory offset
-        
-        uint64_t paramValue = PARAMETER_MEMORY_BASE + param.offset;
-        registerBank.writeRegister(static_cast<uint32_t>(i), paramValue);
-    }
-    
-    std::cout << "Mapped " << pImpl->m_kernelParameters.size() << " kernel parameters to registers" << std::endl;
+    // This function is kept for API compatibility but does nothing
 }
 
 bool PTXVM::initialize() {
+    // Initialize register bank first (allocate register arrays)
+    // Default: 32 integer registers, 32 float registers
+    if (!pImpl->m_registerBank->initialize(32, 32)) {
+        std::cerr << "Failed to initialize register bank" << std::endl;
+        return false;
+    }
+    
+    // Initialize memory subsystem (allocate memory spaces)
+    // Default sizes: 1MB global, 64KB shared, 64KB local, plus parameter memory
+    if (!pImpl->m_memorySubsystem->initialize(
+            1024 * 1024,  // 1 MB global memory
+            64 * 1024,    // 64 KB shared memory
+            64 * 1024)) { // 64 KB local memory
+        std::cerr << "Failed to initialize memory subsystem" << std::endl;
+        return false;
+    }
+    
     // Initialize the executor with register bank and memory subsystem
     pImpl->m_executor = std::make_unique<PTXExecutor>(*pImpl->m_registerBank, *pImpl->m_memorySubsystem, *pImpl->m_performanceCounters);
     

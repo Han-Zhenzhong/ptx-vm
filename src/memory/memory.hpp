@@ -84,10 +84,7 @@ class MemorySubsystem {
 public:
     // Constructor
     MemorySubsystem();
-    
-    // Initialize memory subsystem
-    bool initialize();
-    
+        
     // Initialize the memory subsystem
     bool initialize(size_t globalMemorySize = 1024 * 1024, 
                    size_t sharedMemorySize = 64 * 1024,

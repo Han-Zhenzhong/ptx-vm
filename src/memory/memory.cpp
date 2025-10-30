@@ -208,6 +208,30 @@ bool MemorySubsystem::initialize(size_t globalMemorySize,
         info.ownsBuffer = true;
         pImpl->memorySpaces[MemorySpace::LOCAL] = info;
     }
+    
+    // Initialize parameter memory (for kernel parameters)
+    // Allocate 4KB for parameter memory (sufficient for most kernels)
+    const size_t parameterMemorySize = 4 * 1024;
+    void* parameterBuffer = new uint8_t[parameterMemorySize];
+    if (!parameterBuffer) {
+        // Clean up previously allocated memory
+        if (globalMemorySize > 0) {
+            delete[] static_cast<uint8_t*>(pImpl->memorySpaces[MemorySpace::GLOBAL].buffer);
+        }
+        if (sharedMemorySize > 0) {
+            delete[] static_cast<uint8_t*>(pImpl->memorySpaces[MemorySpace::SHARED].buffer);
+        }
+        if (localMemorySize > 0) {
+            delete[] static_cast<uint8_t*>(pImpl->memorySpaces[MemorySpace::LOCAL].buffer);
+        }
+        return false; // Allocation failed
+    }
+    
+    Impl::MemorySpaceInfo paramInfo;
+    paramInfo.buffer = parameterBuffer;
+    paramInfo.size = parameterMemorySize;
+    paramInfo.ownsBuffer = true;
+    pImpl->memorySpaces[MemorySpace::PARAMETER] = paramInfo;
 
     return true;
 }

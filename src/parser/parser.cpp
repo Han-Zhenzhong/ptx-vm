@@ -46,6 +46,7 @@ private:
     PTXProgram m_program;
     std::string m_errorMessage;
     std::vector<std::string> m_lines;
+    PTXFunction* m_currentFunction = nullptr;  // Track current function being parsed
 };
 
 // 实现部分将在下一个文件中继续...
@@ -90,6 +91,14 @@ void PTXParser::Impl::preprocessLines(const std::string &ptxCode)
             line = line.substr(0, commentPos);
         }
         line = trim(line);
+        
+        // Remove trailing semicolon if present
+        if (!line.empty() && line.back() == ';')
+        {
+            line = line.substr(0, line.size() - 1);
+            line = trim(line);  // Trim again after removing semicolon
+        }
+        
         if (!line.empty())
         {
             m_lines.push_back(line);
@@ -155,8 +164,27 @@ bool PTXParser::Impl::firstPass()
 bool PTXParser::Impl::secondPass()
 {
     bool inFunctionBody = false;
-    for (const std::string &line : m_lines)
+    m_currentFunction = nullptr;
+    
+    for (size_t i = 0; i < m_lines.size(); ++i)
     {
+        const std::string& line = m_lines[i];
+        
+        // Check for function declaration (before opening brace)
+        if (!inFunctionBody && (line.find(".entry") == 0 || line.find(".func") == 0))
+        {
+            std::string funcName = extractFunctionName(line);
+            // Find this function in the already-parsed functions
+            for (auto& func : m_program.functions)
+            {
+                if (func.name == funcName)
+                {
+                    m_currentFunction = &func;
+                    break;
+                }
+            }
+        }
+        
         if (line == "{")
         {
             inFunctionBody = true;
@@ -165,6 +193,7 @@ bool PTXParser::Impl::secondPass()
         if (line == "}")
         {
             inFunctionBody = false;
+            m_currentFunction = nullptr;
             continue;
         }
         if (!inFunctionBody)
@@ -387,15 +416,35 @@ DecodedInstruction PTXParser::Impl::convertToDecoded(const PTXInstruction &ptxIn
     if (!ptxInstr.predicate.empty())
     {
         decoded.hasPredicate = true;
-        if (ptxInstr.predicate[0] == '!')
+        std::string pred = ptxInstr.predicate;
+        
+        // Handle negation (!)
+        if (pred[0] == '!')
         {
             decoded.predicateValue = false;
-            decoded.predicateIndex = std::stoi(ptxInstr.predicate.substr(2));
+            pred = pred.substr(1); // Remove '!'
         }
         else
         {
             decoded.predicateValue = true;
-            decoded.predicateIndex = std::stoi(ptxInstr.predicate.substr(1));
+        }
+        
+        // Handle predicate register prefix (%)
+        if (!pred.empty() && pred[0] == '%')
+        {
+            pred = pred.substr(1); // Remove '%'
+        }
+        
+        // Handle predicate register prefix (p)
+        if (!pred.empty() && pred[0] == 'p')
+        {
+            pred = pred.substr(1); // Remove 'p'
+        }
+        
+        // Now extract the predicate index number
+        if (!pred.empty())
+        {
+            decoded.predicateIndex = std::stoi(pred);
         }
     }
     decoded.modifiers = 0;
@@ -618,10 +667,18 @@ InstructionTypes PTXParser::Impl::opcodeToInstructionType(const std::string &opc
         return InstructionTypes::CALL;
     if (opcode == "ret" || opcode == "exit")
         return InstructionTypes::RET;
-    if (opcode == "ld")
+    if (opcode == "ld") {
+        // Check for parameter load
+        if (hasModifier(".param"))
+            return InstructionTypes::LD_PARAM;
         return InstructionTypes::LD;
-    if (opcode == "st")
+    }
+    if (opcode == "st") {
+        // Check for parameter store
+        if (hasModifier(".param"))
+            return InstructionTypes::ST_PARAM;
         return InstructionTypes::ST;
+    }
     if (opcode == "mov")
         return InstructionTypes::MOV;
     if (opcode == "bar" || opcode == "barrier")
@@ -635,20 +692,98 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
     op.isAddress = false;
     op.isIndirect = false;
     std::string s = trim(str);
-    if (!s.empty() && s.front() == '[' && s.back() == ']')
+    
+    // Handle empty strings
+    if (s.empty()) {
+        op.type = OperandType::UNKNOWN;
+        return op;
+    }
+    
+    // Handle memory operands with brackets [...]
+    if (s.size() >= 2 && s[0] == '[' && s[s.size()-1] == ']')
     {
         op.type = OperandType::MEMORY;
         op.isAddress = true;
-        std::string inner = s.substr(1, s.size() - 2);
+        op.isIndirect = true;  // Memory operands in brackets are indirect
+        std::string inner = trim(s.substr(1, s.size() - 2));
+        
+        // Check for offset notation like [register+offset] or [%r0+4]
         size_t plusPos = inner.find('+');
         if (plusPos != std::string::npos)
         {
+            std::string baseReg = trim(inner.substr(0, plusPos));
             std::string offsetStr = trim(inner.substr(plusPos + 1));
-            op.address = std::stoull(offsetStr);
+            
+            // Parse the base register if it starts with %
+            if (!baseReg.empty() && baseReg[0] == '%')
+            {
+                std::string numPart;
+                for (size_t i = 1; i < baseReg.size(); ++i)
+                {
+                    if (std::isdigit(baseReg[i]))
+                    {
+                        numPart += baseReg[i];
+                    }
+                }
+                if (!numPart.empty())
+                {
+                    op.registerIndex = std::stoi(numPart);
+                }
+            }
+            
+            // Parse the offset
+            try {
+                op.address = std::stoull(offsetStr);
+            } catch (...) {
+                op.address = 0;
+            }
         }
         else
         {
-            op.address = 0;
+            // No offset - could be [register] or [param_name]
+            // Check if this is a parameter name (not a register)
+            if (!inner.empty() && inner[0] != '%')
+            {
+                // This is a parameter name - try to resolve it
+                if (m_currentFunction != nullptr)
+                {
+                    for (const auto& param : m_currentFunction->parameters)
+                    {
+                        if (param.name == inner)
+                        {
+                            op.address = param.offset;
+                            op.isIndirect = false;  // Parameter access is not register-indirect
+                            return op;
+                        }
+                    }
+                }
+                // If not found, default to offset 0
+                op.address = 0;
+                op.isIndirect = false;
+            }
+            else if (!inner.empty() && inner[0] == '%')
+            {
+                // Register indirect addressing like [%r0]
+                // Parse the register number
+                std::string numPart;
+                for (size_t i = 1; i < inner.size(); ++i)
+                {
+                    if (std::isdigit(inner[i]))
+                    {
+                        numPart += inner[i];
+                    }
+                }
+                if (!numPart.empty())
+                {
+                    op.registerIndex = std::stoi(numPart);
+                }
+                op.address = 0;  // No offset
+            }
+            else
+            {
+                // Empty or unknown
+                op.address = 0;
+            }
         }
         return op;
     }

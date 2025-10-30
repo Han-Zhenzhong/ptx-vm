@@ -234,7 +234,17 @@ public:
             m_currentInstructionIndex++;
             return true;
         }
+        
+        // Calculate memory address
         uint64_t address = instr.sources[0].address;
+        
+        // Handle register-indirect addressing [%rX] or [%rX+offset]
+        if (instr.sources[0].isIndirect) {
+            // Get base address from register
+            uint64_t baseAddr = m_registerBank->readRegister(instr.sources[0].registerIndex);
+            address = baseAddr + instr.sources[0].address;  // Add offset if any
+        }
+        
         // Increment appropriate memory read counter
         switch (space) {
             case MemorySpace::GLOBAL:
@@ -252,7 +262,40 @@ public:
             default:
                 break;
         }
-        uint64_t value = m_memorySubsystem->read<uint64_t>(space, address);
+        
+        // Read from memory based on data type
+        uint64_t value = 0;
+        switch (instr.dataType) {
+            case DataType::S8:
+                // Read as unsigned, then sign-extend
+                value = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int8_t>(m_memorySubsystem->read<uint8_t>(space, address))));
+                break;
+            case DataType::U8:
+                value = static_cast<uint64_t>(m_memorySubsystem->read<uint8_t>(space, address));
+                break;
+            case DataType::S16:
+                // Read as unsigned, then sign-extend
+                value = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int16_t>(m_memorySubsystem->read<uint16_t>(space, address))));
+                break;
+            case DataType::U16:
+                value = static_cast<uint64_t>(m_memorySubsystem->read<uint16_t>(space, address));
+                break;
+            case DataType::S32:
+                // Read as unsigned, then sign-extend
+                value = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(m_memorySubsystem->read<uint32_t>(space, address))));
+                break;
+            case DataType::U32:
+            case DataType::F32:
+                value = static_cast<uint64_t>(m_memorySubsystem->read<uint32_t>(space, address));
+                break;
+            case DataType::S64:
+            case DataType::U64:
+            case DataType::F64:
+            default:
+                value = m_memorySubsystem->read<uint64_t>(space, address);
+                break;
+        }
+        
         storeRegisterValue(instr.dest.registerIndex, value);
         m_currentInstructionIndex++;
         return true;
@@ -266,8 +309,19 @@ public:
             m_currentInstructionIndex++;
             return true;
         }
+        
         int64_t src = getSourceValue(instr.sources[0]);
+        
+        // Calculate memory address
         uint64_t address = instr.dest.address;
+        
+        // Handle register-indirect addressing [%rX] or [%rX+offset]
+        if (instr.dest.isIndirect) {
+            // Get base address from register
+            uint64_t baseAddr = m_registerBank->readRegister(instr.dest.registerIndex);
+            address = baseAddr + instr.dest.address;  // Add offset if any
+        }
+        
         // Increment appropriate memory write counter
         switch (space) {
             case MemorySpace::GLOBAL:
@@ -285,7 +339,30 @@ public:
             default:
                 break;
         }
-        m_memorySubsystem->write<uint64_t>(space, address, static_cast<uint64_t>(src));
+        
+        // Write to memory based on data type
+        switch (instr.dataType) {
+            case DataType::S8:
+            case DataType::U8:
+                m_memorySubsystem->write<uint8_t>(space, address, static_cast<uint8_t>(src));
+                break;
+            case DataType::S16:
+            case DataType::U16:
+                m_memorySubsystem->write<uint16_t>(space, address, static_cast<uint16_t>(src));
+                break;
+            case DataType::S32:
+            case DataType::U32:
+            case DataType::F32:
+                m_memorySubsystem->write<uint32_t>(space, address, static_cast<uint32_t>(src));
+                break;
+            case DataType::S64:
+            case DataType::U64:
+            case DataType::F64:
+            default:
+                m_memorySubsystem->write<uint64_t>(space, address, static_cast<uint64_t>(src));
+                break;
+        }
+        
         m_currentInstructionIndex++;
         return true;
     }
@@ -767,8 +844,17 @@ public:
             return true;
         }
         
-        // Read from memory
+        // Calculate memory address
         uint64_t address = instr.sources[0].address;
+        
+        // Handle register-indirect addressing [%rX] or [%rX+offset]
+        if (instr.sources[0].isIndirect) {
+            // Get base address from register
+            uint64_t baseAddr = m_registerBank->readRegister(instr.sources[0].registerIndex);
+            address = baseAddr + instr.sources[0].address;  // Add offset if any
+        }
+        
+        // Determine memory space from address
         MemorySpace space = determineMemorySpace(address);
         
         // Increment appropriate memory read counter
@@ -790,7 +876,38 @@ public:
                 break;
         }
         
-        uint64_t value = m_memorySubsystem->read<uint64_t>(space, address);
+        // Read from memory based on data type
+        uint64_t value = 0;
+        switch (instr.dataType) {
+            case DataType::S8:
+                // Read as unsigned, then sign-extend
+                value = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int8_t>(m_memorySubsystem->read<uint8_t>(space, address))));
+                break;
+            case DataType::U8:
+                value = static_cast<uint64_t>(m_memorySubsystem->read<uint8_t>(space, address));
+                break;
+            case DataType::S16:
+                // Read as unsigned, then sign-extend
+                value = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int16_t>(m_memorySubsystem->read<uint16_t>(space, address))));
+                break;
+            case DataType::U16:
+                value = static_cast<uint64_t>(m_memorySubsystem->read<uint16_t>(space, address));
+                break;
+            case DataType::S32:
+                // Read as unsigned, then sign-extend
+                value = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(m_memorySubsystem->read<uint32_t>(space, address))));
+                break;
+            case DataType::U32:
+            case DataType::F32:
+                value = static_cast<uint64_t>(m_memorySubsystem->read<uint32_t>(space, address));
+                break;
+            case DataType::S64:
+            case DataType::U64:
+            case DataType::F64:
+            default:
+                value = m_memorySubsystem->read<uint64_t>(space, address);
+                break;
+        }
         
         // Store result in destination register
         storeRegisterValue(instr.dest.registerIndex, value);
@@ -802,17 +919,27 @@ public:
     
     // Execute ST (store) instruction
     bool executeST(const DecodedInstruction& instr) {
-        if (instr.sources.size() != 2 || instr.sources[0].type != OperandType::MEMORY) {
+        // New convention: dest is memory address, sources[0] is data value
+        if (instr.dest.type != OperandType::MEMORY || instr.sources.size() != 1) {
             std::cerr << "Invalid ST instruction format" << std::endl;
             m_currentInstructionIndex++;
             return true;
         }
         
-        // Get source value
-        int64_t src = getSourceValue(instr.sources[1]);
+        // Get source value to store
+        int64_t src = getSourceValue(instr.sources[0]);
         
-        // Write to memory
-        uint64_t address = instr.sources[0].address;
+        // Calculate memory address
+        uint64_t address = instr.dest.address;
+        
+        // Handle register-indirect addressing [%rX] or [%rX+offset]
+        if (instr.dest.isIndirect) {
+            // Get base address from register
+            uint64_t baseAddr = m_registerBank->readRegister(instr.dest.registerIndex);
+            address = baseAddr + instr.dest.address;  // Add offset if any
+        }
+        
+        // Determine memory space from address
         MemorySpace space = determineMemorySpace(address);
         
         // Increment appropriate memory write counter
@@ -834,7 +961,28 @@ public:
                 break;
         }
         
-        m_memorySubsystem->write<uint64_t>(space, address, static_cast<uint64_t>(src));
+        // Write to memory based on data type
+        switch (instr.dataType) {
+            case DataType::S8:
+            case DataType::U8:
+                m_memorySubsystem->write<uint8_t>(space, address, static_cast<uint8_t>(src));
+                break;
+            case DataType::S16:
+            case DataType::U16:
+                m_memorySubsystem->write<uint16_t>(space, address, static_cast<uint16_t>(src));
+                break;
+            case DataType::S32:
+            case DataType::U32:
+            case DataType::F32:
+                m_memorySubsystem->write<uint32_t>(space, address, static_cast<uint32_t>(src));
+                break;
+            case DataType::S64:
+            case DataType::U64:
+            case DataType::F64:
+            default:
+                m_memorySubsystem->write<uint64_t>(space, address, static_cast<uint64_t>(src));
+                break;
+        }
         
         // Move to next instruction
         m_currentInstructionIndex++;
@@ -928,11 +1076,10 @@ public:
             return true;
         }
         
-        // Calculate the actual parameter memory address
-        uint64_t paramAddress = 0x1000 + paramOffset;  // PARAMETER_MEMORY_BASE = 0x1000
-        
         // Read from parameter memory
-        paramValue = impl.m_memorySubsystem->read<uint64_t>(MemorySpace::GLOBAL, paramAddress);
+        // Note: Use buffer-relative addressing (paramOffset directly), not absolute address
+        // The PARAMETER memory space buffer starts at offset 0
+        paramValue = impl.m_memorySubsystem->read<uint64_t>(MemorySpace::PARAMETER, paramOffset);
         
         // Store result in destination register
         impl.storeRegisterValue(instr.dest.registerIndex, paramValue);
@@ -974,11 +1121,10 @@ public:
             return true;
         }
         
-        // Calculate the actual parameter memory address
-        uint64_t paramAddress = 0x1000 + paramOffset;  // PARAMETER_MEMORY_BASE = 0x1000
-        
         // Write to parameter memory
-        impl.m_memorySubsystem->write<uint64_t>(MemorySpace::GLOBAL, paramAddress, srcValue);
+        // Note: Use buffer-relative addressing (paramOffset directly), not absolute address
+        // The PARAMETER memory space buffer starts at offset 0
+        impl.m_memorySubsystem->write<uint64_t>(MemorySpace::PARAMETER, paramOffset, srcValue);
         
         // Move to next instruction
         impl.m_currentInstructionIndex++;
@@ -1980,9 +2126,8 @@ public:
             const PTXParameter& param = func.parameters[i];
             frame.localParameters[param.name] = args[i];
             
-            // Also write to parameter memory
-            uint64_t paramAddr = 0x1000 + param.offset; // PARAMETER_MEMORY_BASE
-            m_memorySubsystem->write<uint64_t>(MemorySpace::GLOBAL, paramAddr, args[i]);
+            // Also write to parameter memory (using buffer-relative addressing)
+            m_memorySubsystem->write<uint64_t>(MemorySpace::PARAMETER, param.offset, args[i]);
         }
         
         // Push call frame
@@ -2033,9 +2178,8 @@ public:
         auto it = m_program.symbolTable.parameterSymbols.find(paramName);
         if (it != m_program.symbolTable.parameterSymbols.end()) {
             const PTXParameter* param = it->second;
-            // Read from parameter memory
-            uint64_t paramAddr = 0x1000 + param->offset; // PARAMETER_MEMORY_BASE
-            outValue = m_memorySubsystem->read<uint64_t>(MemorySpace::GLOBAL, paramAddr);
+            // Read from parameter memory (using buffer-relative addressing)
+            outValue = m_memorySubsystem->read<uint64_t>(MemorySpace::PARAMETER, param->offset);
             return true;
         }
         
@@ -2056,8 +2200,8 @@ public:
         auto it = m_program.symbolTable.parameterSymbols.find(paramName);
         if (it != m_program.symbolTable.parameterSymbols.end()) {
             const PTXParameter* param = it->second;
-            uint64_t paramAddr = 0x1000 + param->offset; // PARAMETER_MEMORY_BASE
-            m_memorySubsystem->write<uint64_t>(MemorySpace::GLOBAL, paramAddr, value);
+            // Write to parameter memory (using buffer-relative addressing)
+            m_memorySubsystem->write<uint64_t>(MemorySpace::PARAMETER, param->offset, value);
             return true;
         }
         

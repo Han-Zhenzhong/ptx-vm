@@ -9,6 +9,27 @@
         "stdexcept": "cpp",
         "vector": "cpp",
         "cstdlib": "cpp",
-        "memory": "cpp"
+        "memory": "cpp",
+        "atomic": "cpp",
+        "deque": "cpp",
+        "fstream": "cpp",
+        "ios": "cpp",
+        "list": "cpp",
+        "locale": "cpp",
+        "optional": "cpp",
+        "regex": "cpp",
+        "sstream": "cpp",
+        "streambuf": "cpp",
+        "xhash": "cpp",
+        "xiosbase": "cpp",
+        "xlocale": "cpp",
+        "xlocbuf": "cpp",
+        "xlocmes": "cpp",
+        "xlocmon": "cpp",
+        "xlocnum": "cpp",
+        "xloctime": "cpp",
+        "xmemory": "cpp",
+        "xstring": "cpp",
+        "string": "cpp"
     }
 }
