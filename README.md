@@ -85,36 +85,112 @@ make
 
 ## Usage
 
-### Basic Execution
+The PTX VM provides **three ways to use** the virtual machine:
+
+### 1. 🚀 Quick Start - Direct Execution Mode
+Run PTX programs directly from the command line:
+
 ```bash
+# Basic execution (with default INFO log level)
 ./ptx_vm examples/simple_math_example.ptx
+
+# With debug logging to see detailed execution
+./ptx_vm --log-level debug examples/control_flow_example.ptx
+
+# Run example programs
+cd build
+./execution_result_demo
+./parameter_passing_example
 ```
 
-### Interactive CLI Mode
+**Command-line options:**
+- `-h, --help` - Display help message
+- `-l, --log-level LEVEL` - Set log level: `debug`, `info` (default), `warning`, `error`
+
+### 2. 💻 Interactive CLI Mode
+For debugging, learning, and experimentation:
+
 ```bash
+# Start interactive mode
 ./ptx_vm
-> load examples/control_flow_example.ptx
-> run
-> dump
-> exit
+
+# Interactive commands
+> load examples/control_flow_example.ptx  # Load PTX program
+> alloc 1024                              # Allocate memory
+> launch myKernel 0x10000                 # Launch kernel with parameters
+> memory 0x10000 256                      # View memory contents
+> dump                                    # Show execution statistics
+> loglevel debug                          # Change log level
+> exit                                    # Exit the VM
+```
+
+### 3. 🔧 API Programming Mode
+Integrate PTX VM into your application:
+
+```cpp
+#include "host_api.hpp"
+
+int main() {
+    // Initialize VM
+    HostAPI hostAPI;
+    hostAPI.initialize();
+    
+    // Allocate device memory
+    CUdeviceptr devicePtr;
+    hostAPI.cuMemAlloc(&devicePtr, 1024 * sizeof(int));
+    
+    // Prepare and copy data
+    std::vector<int> data(1024, 42);
+    hostAPI.cuMemcpyHtoD(devicePtr, data.data(), 1024 * sizeof(int));
+    
+    // Load and execute PTX program
+    hostAPI.loadProgram("my_kernel.ptx");
+    
+    // Launch kernel with parameters
+    void* params[] = { &devicePtr, &size };
+    hostAPI.cuLaunchKernel(kernel, 1,1,1, 32,1,1, 0, 0, params, nullptr);
+    
+    // Copy results back
+    std::vector<int> results(1024);
+    hostAPI.cuMemcpyDtoH(results.data(), devicePtr, 1024 * sizeof(int));
+    
+    // Cleanup
+    hostAPI.cuMemFree(devicePtr);
+    return 0;
+}
 ```
 
 ### Log Level Control
-```bash
-# Set log level via command line
-./ptx_vm --log-level debug program.ptx
-./ptx_vm -l info program.ptx
 
-# Change log level in interactive mode
-> loglevel debug    # Enable all logs
-> loglevel info     # Default level
-> loglevel warning  # Warnings and errors only
-> loglevel error    # Errors only
+Control the verbosity of VM output:
+
+```bash
+# Command-line mode
+./ptx_vm --log-level debug program.ptx    # Detailed debug info
+./ptx_vm --log-level info program.ptx     # General info (default)
+./ptx_vm --log-level warning program.ptx  # Warnings and errors
+./ptx_vm --log-level error program.ptx    # Errors only
+
+# Interactive mode
+> loglevel debug     # Enable all logs
+> loglevel info      # Default level
+> loglevel warning   # Warnings and errors only
+> loglevel error     # Errors only
+> loglevel           # Display current level
 ```
 
-Available log levels: `debug`, `info` (default), `warning`, `error`
+**Log levels:**
+- **debug** - Shows detailed execution info, register values, memory operations
+- **info** - Shows program loading, kernel launches, general info (default)
+- **warning** - Shows warnings and errors only
+- **error** - Shows errors only
 
-For more details, see [Logging System Documentation](./user_docs/logging_system.md).
+For more details, see:
+- 📖 [Complete User Guide](./user_docs/user_guide.md) - Detailed usage instructions
+- 📖 [中文用户指南](./user_docs/USER_GUIDE_CN.md) - Chinese user guide
+- 📖 [Quick Reference](./user_docs/quick_reference.md) - Command quick reference
+- 📖 [API Documentation](./user_docs/api_documentation.md) - API reference
+- 📖 [Logging System](./user_docs/logging_system.md) - Logging system details
 
 ## Command Reference
 

@@ -1,33 +1,34 @@
 # PTX 虚拟机使用指南
 
 **Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
-**Last Updated**: 2025-10-29
+**Last Updated**: 2025-10-30
 
 ## 目录
 - [简介](#简介)
 - [快速开始](#快速开始)
 - [三种使用方式](#三种使用方式)
-- [API 编程接口](#api-编程接口)
-- [命令行交互模式](#命令行交互模式)
-- [直接执行模式](#直接执行模式)
-- [完整示例](#完整示例)
+  - [方式 1：API 编程接口](#方式-1api-编程接口)
+  - [方式 2：命令行交互模式](#方式-2命令行交互模式)
+  - [方式 3：直接执行模式](#方式-3直接执行模式)
+- [完整工作流示例](#完整工作流示例)
+- [命令参考](#命令参考)
 - [常见问题](#常见问题)
 
 ---
 
 ## 简介
 
-PTX 虚拟机是一个用于执行 NVIDIA PTX（Parallel Thread Execution）中间代码的虚拟机实现。它提供了完整的 SIMT 执行模型、内存管理、性能分析等功能。
+PTX 虚拟机是一个用于执行 NVIDIA PTX（Parallel Thread Execution）中间代码的完整虚拟机实现。它提供了全面的 SIMT 执行模型、内存管理、性能分析等功能。
 
 ### 主要特性
 
-- ✅ **完整的 SIMT 执行模型** - 支持并行线程执行
-- ✅ **Warp 调度** - 动态线程掩码管理
-- ✅ **谓词执行** - 条件操作支持
-- ✅ **分歧处理** - 多种重聚算法
-- ✅ **内存系统** - 分层内存模型、缓存模拟
-- ✅ **性能计数器** - 详细的执行统计
+- ✅ **完整的 SIMT 执行模型** - 支持并行线程执行和 Warp 调度
+- ✅ **全面的参数传递支持** - 支持多种参数类型和内核启动
+- ✅ **三种使用方式** - API 编程、CLI 交互、直接执行
+- ✅ **性能分析和可视化** - 详细的性能计数器和可视化工具
 - ✅ **调试支持** - 断点、监视点、单步执行
+- ✅ **详细的日志系统** - 多级别日志输出
+- ✅ **分层内存模型** - 全局、共享、局部、参数内存
 
 ---
 
@@ -54,34 +55,62 @@ make test
 ### 2. 运行第一个示例
 
 ```bash
-# 直接执行 PTX 文件
+# 直接执行 PTX 文件（默认INFO日志级别）
 ./ptx_vm ../examples/simple_math_example.ptx
+
+# 使用调试日志级别运行
+./ptx_vm --log-level debug ../examples/simple_math_example.ptx
 
 # 或运行示例程序
 ./execution_result_demo
 ./parameter_passing_example
 ```
 
+### 3. 命令行选项
+
+```bash
+# 查看帮助信息
+./ptx_vm --help
+
+# 设置日志级别
+./ptx_vm --log-level debug program.ptx    # 详细调试信息
+./ptx_vm --log-level info program.ptx     # 一般信息（默认）
+./ptx_vm --log-level warning program.ptx  # 警告和错误
+./ptx_vm --log-level error program.ptx    # 仅错误信息
+
+# 简写形式
+./ptx_vm -l debug program.ptx
+./ptx_vm -h                                # 显示帮助
+```
+
+### 4. 日志级别说明
+
+- **debug** - 显示详细的调试信息，包括内部状态、寄存器值、内存操作等
+- **info** - 显示一般信息，如程序加载、内核启动等（默认级别）
+- **warning** - 显示警告和错误信息
+- **error** - 仅显示错误信息
+
+更多关于日志系统的信息，请参阅[日志系统文档](logging_system.md)。
+
 ---
 
 ## 三种使用方式
 
-PTX 虚拟机提供三种使用方式，适用于不同的场景：
+PTX 虚拟机提供 **三种不同的使用方式**，各有适用场景：
 
-### 方式 1：API 编程接口
-**适用场景**：将 PTX-VM 集成到你的应用程序中
-
-### 方式 2：命令行交互模式（CLI）
-**适用场景**：调试、实验、学习 PTX
-
-### 方式 3：直接执行模式
-**适用场景**：快速运行 PTX 文件
+| 使用方式 | 最适合 | 使用场景 |
+|---------|--------|----------|
+| **API 编程接口** | 应用集成 | 将 PTX-VM 集成到你的 C++ 应用程序中 |
+| **命令行交互模式** | 调试和学习 | 交互式调试和实验 PTX 代码 |
+| **直接执行模式** | 快速测试 | 从命令行快速运行 PTX 文件 |
 
 ---
 
-## API 编程接口
+## 方式 1：API 编程接口
 
-### 基本使用流程
+**适用场景**：当你想将 PTX VM 集成到你的 C++ 应用程序中时使用。
+
+### 完整 API 示例
 
 ```cpp
 #include "host_api.hpp"
@@ -402,12 +431,36 @@ Watchpoint set at memory address 0x10000
 > profile stop
 ```
 
-#### 6. 帮助和退出
+#### 6. 日志控制
+
+```bash
+# 查看当前日志级别
+> loglevel
+Current log level: INFO
+
+# 设置日志级别
+> loglevel debug      # 启用详细调试日志
+> loglevel info       # 设置为一般信息（默认）
+> loglevel warning    # 只显示警告和错误
+> loglevel error      # 只显示错误
+
+# 获取日志级别帮助
+> help loglevel
+```
+
+日志级别说明：
+- `debug` - 显示所有日志，包括内部状态和执行细节
+- `info` - 显示一般操作信息（默认）
+- `warning` - 显示警告和错误
+- `error` - 只显示错误信息
+
+#### 7. 帮助和退出
 
 ```bash
 # 获取帮助
 > help
 > help memory    # 特定命令的帮助
+> help loglevel  # 日志级别帮助
 
 # 退出
 > quit

@@ -1,12 +1,75 @@
 # API Documentation
 
 **Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
-**Last Updated**: 2025-10-29
+**Last Updated**: 2025-10-30
 
 ## Overview
 This document provides detailed API documentation for the PTX Virtual Machine. The API is designed to be simple and consistent, providing access to core functionality while maintaining encapsulation of internal details.
 
 **Author**: Zhenzhong Han <zhenzhong.han@qq.com>
+
+## Quick Start
+
+### Basic Usage Example
+
+```cpp
+#include "host_api.hpp"
+#include "logger.hpp"
+
+int main() {
+    // Optional: Set log level for debugging
+    Logger::setLogLevel(LogLevel::INFO);  // or DEBUG, WARNING, ERROR
+    
+    // Create and initialize VM
+    HostAPI hostAPI;
+    if (!hostAPI.initialize()) {
+        Logger::error("Failed to initialize VM");
+        return 1;
+    }
+    
+    // Load PTX program
+    if (!hostAPI.loadProgram("kernel.ptx")) {
+        Logger::error("Failed to load program");
+        return 1;
+    }
+    
+    // Execute
+    if (!hostAPI.runProgram()) {
+        Logger::error("Execution failed");
+        return 1;
+    }
+    
+    return 0;
+}
+```
+
+### Logging System Integration
+
+The PTX-VM includes a built-in logging system that can be controlled programmatically:
+
+```cpp
+#include "logger.hpp"
+
+// Set log level
+Logger::setLogLevel(LogLevel::DEBUG);   // Detailed debug output
+Logger::setLogLevel(LogLevel::INFO);    // Normal operation (default)
+Logger::setLogLevel(LogLevel::WARNING); // Warnings and errors only
+Logger::setLogLevel(LogLevel::ERROR);   // Errors only
+
+// Enable/disable timestamps
+Logger::setShowTimestamp(true);
+
+// Enable/disable colored output
+Logger::setColorOutput(true);
+
+// Use the logger in your code
+Logger::debug("Detailed debug information");
+Logger::info("General information");
+Logger::warning("Warning message");
+Logger::error("Error message");
+```
+
+For more details, see the [Logging System Documentation](logging_system.md).
 
 ## API Structure
 
