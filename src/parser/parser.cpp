@@ -5,6 +5,7 @@
 #include <regex>
 #include <cctype>
 #include <algorithm>
+#include <cstring>
 
 // PTXInstruction is defined in instruction_types.hpp (included via parser.hpp)
 
@@ -336,10 +337,25 @@ bool PTXParser::Impl::parseInstruction(const std::string &line, PTXInstruction &
         std::vector<std::string> operands = splitOperands(operandsStr);
         if (!operands.empty())
         {
-            instr.dest = operands[0];
-            for (size_t i = 1; i < operands.size(); ++i)
+            // Some instructions (like bra, call, ret, exit) have no destination operand
+            // They use all operands as sources
+            if (instr.opcode == "bra" || instr.opcode == "call" || 
+                instr.opcode == "ret" || instr.opcode == "exit")
             {
-                instr.sources.push_back(operands[i]);
+                // All operands are sources for branch/call/return instructions
+                for (const auto& op : operands)
+                {
+                    instr.sources.push_back(op);
+                }
+            }
+            else
+            {
+                // Normal instruction: first operand is destination, rest are sources
+                instr.dest = operands[0];
+                for (size_t i = 1; i < operands.size(); ++i)
+                {
+                    instr.sources.push_back(operands[i]);
+                }
             }
         }
     }
@@ -390,6 +406,16 @@ DecodedInstruction PTXParser::Impl::convertToDecoded(const PTXInstruction &ptxIn
         decoded.srcType = parseType(ptxInstr.modifiers[1]);
     }
     
+    // Parse memory space from modifiers (for ld/st instructions)
+    decoded.memorySpace = MemorySpace::GLOBAL; // default
+    for (const auto& mod : ptxInstr.modifiers) {
+        if (mod == ".global") decoded.memorySpace = MemorySpace::GLOBAL;
+        else if (mod == ".shared") decoded.memorySpace = MemorySpace::SHARED;
+        else if (mod == ".local") decoded.memorySpace = MemorySpace::LOCAL;
+        else if (mod == ".param") decoded.memorySpace = MemorySpace::PARAMETER;
+        else if (mod == ".const") decoded.memorySpace = MemorySpace::GLOBAL; // map '.const' to GLOBAL if CONSTANT enum member is not available
+    }
+    
     // Parse comparison operator from modifiers (for setp)
     decoded.compareOp = CompareOp::EQ; // default
     for (const auto& mod : ptxInstr.modifiers) {
@@ -435,16 +461,34 @@ DecodedInstruction PTXParser::Impl::convertToDecoded(const PTXInstruction &ptxIn
             pred = pred.substr(1); // Remove '%'
         }
         
-        // Handle predicate register prefix (p)
-        if (!pred.empty() && pred[0] == 'p')
+        // Handle predicate register prefix (p) or other register types (r, f, d)
+        // Extract only the numeric part
+        std::string numPart;
+        for (size_t i = 0; i < pred.size(); ++i)
         {
-            pred = pred.substr(1); // Remove 'p'
+            if (std::isdigit(pred[i]))
+            {
+                numPart += pred[i];
+            }
+            else if (i == 0 && (pred[i] == 'p' || pred[i] == 'r' || pred[i] == 'f' || pred[i] == 'd'))
+            {
+                // Skip the register type prefix
+            }
         }
         
         // Now extract the predicate index number
-        if (!pred.empty())
+        if (!numPart.empty())
         {
-            decoded.predicateIndex = std::stoi(pred);
+            decoded.predicateIndex = std::stoi(numPart);
+        }
+        else if (!pred.empty())
+        {
+            // Fallback: try to parse the whole string (for cases like "@1" without prefix)
+            try {
+                decoded.predicateIndex = std::stoi(pred);
+            } catch (...) {
+                decoded.predicateIndex = 0; // Default to 0 if parsing fails
+            }
         }
     }
     decoded.modifiers = 0;
@@ -668,15 +712,27 @@ InstructionTypes PTXParser::Impl::opcodeToInstructionType(const std::string &opc
     if (opcode == "ret" || opcode == "exit")
         return InstructionTypes::RET;
     if (opcode == "ld") {
-        // Check for parameter load
+        // Check for specific memory space modifiers
         if (hasModifier(".param"))
             return InstructionTypes::LD_PARAM;
+        if (hasModifier(".global"))
+            return InstructionTypes::LD_GLOBAL;
+        if (hasModifier(".shared"))
+            return InstructionTypes::LD_SHARED;
+        if (hasModifier(".local"))
+            return InstructionTypes::LD_LOCAL;
         return InstructionTypes::LD;
     }
     if (opcode == "st") {
-        // Check for parameter store
+        // Check for specific memory space modifiers
         if (hasModifier(".param"))
             return InstructionTypes::ST_PARAM;
+        if (hasModifier(".global"))
+            return InstructionTypes::ST_GLOBAL;
+        if (hasModifier(".shared"))
+            return InstructionTypes::ST_SHARED;
+        if (hasModifier(".local"))
+            return InstructionTypes::ST_LOCAL;
         return InstructionTypes::ST;
     }
     if (opcode == "mov")
@@ -713,11 +769,14 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
         {
             std::string baseReg = trim(inner.substr(0, plusPos));
             std::string offsetStr = trim(inner.substr(plusPos + 1));
+            std::cout << "Parser DEBUG: inner='" << inner << "', plusPos=" << plusPos 
+                      << ", baseReg='" << baseReg << "', offsetStr='" << offsetStr << "'" << std::endl;
             
             // Parse the base register if it starts with %
             if (!baseReg.empty() && baseReg[0] == '%')
             {
                 std::string numPart;
+                // Skip % and any register type letter (r, f, d, p)
                 for (size_t i = 1; i < baseReg.size(); ++i)
                 {
                     if (std::isdigit(baseReg[i]))
@@ -725,15 +784,23 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
                         numPart += baseReg[i];
                     }
                 }
+                std::cout << "Parser DEBUG: baseReg='" << baseReg << "', numPart='" << numPart << "'" << std::endl;
                 if (!numPart.empty())
                 {
-                    op.registerIndex = std::stoi(numPart);
+                    op.baseRegisterIndex = std::stoi(numPart);
+                }
+                else
+                {
+                    op.baseRegisterIndex = 0; // Default to register 0 if no number found
                 }
             }
             
             // Parse the offset
             try {
                 op.address = std::stoull(offsetStr);
+                std::cout << "Parser DEBUG: Parsed [" << baseReg << "+" << offsetStr 
+                          << "] -> baseRegisterIndex=" << op.baseRegisterIndex 
+                          << ", offset=" << op.address << std::endl;
             } catch (...) {
                 op.address = 0;
             }
@@ -764,7 +831,7 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
             else if (!inner.empty() && inner[0] == '%')
             {
                 // Register indirect addressing like [%r0]
-                // Parse the register number
+                // Parse the register number (skip % and register type letter)
                 std::string numPart;
                 for (size_t i = 1; i < inner.size(); ++i)
                 {
@@ -775,7 +842,11 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
                 }
                 if (!numPart.empty())
                 {
-                    op.registerIndex = std::stoi(numPart);
+                    op.baseRegisterIndex = std::stoi(numPart);
+                }
+                else
+                {
+                    op.baseRegisterIndex = 0; // Default to register 0 if no number found
                 }
                 op.address = 0;  // No offset
             }
@@ -789,7 +860,32 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
     }
     if (!s.empty() && s[0] == '%')
     {
+        // Check if this is a predicate register (%pN)
+        if (s.size() >= 3 && s[1] == 'p' && std::isdigit(s[2]))
+        {
+            op.type = OperandType::PREDICATE;
+            std::string numPart;
+            for (size_t i = 2; i < s.size(); ++i)
+            {
+                if (std::isdigit(s[i]))
+                {
+                    numPart += s[i];
+                }
+            }
+            if (!numPart.empty())
+            {
+                op.predicateIndex = std::stoi(numPart);
+            }
+            return op;
+        }
+        
+        // Regular register (%rN, %fN, %dN, etc.)
         op.type = OperandType::REGISTER;
+        
+        // Parse register type and number
+        // PTX registers: %rN (int), %fN (float), %dN (double), %pN (predicate)
+        // We use a unified register space with all register types
+        // The register number is parsed directly without type prefix
         std::string numPart;
         for (size_t i = 1; i < s.size(); ++i)
         {
@@ -798,10 +894,14 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
                 numPart += s[i];
             }
         }
+        
         if (!numPart.empty())
         {
             op.registerIndex = std::stoi(numPart);
         }
+        
+        // Note: Register type (%r, %f, %d, %p) is implicit in the instruction
+        // The executor will handle type conversions based on instruction data type
         return op;
     }
     if (!s.empty() && s[0] == 'p' && s.size() > 1 && std::isdigit(s[1]))
@@ -815,7 +915,20 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
         op.type = OperandType::IMMEDIATE;
         try
         {
-            op.immediateValue = std::stoll(s);
+            // Check if it's a floating point number (contains '.' or 'e'/'E' for scientific notation)
+            if (s.find('.') != std::string::npos || s.find('e') != std::string::npos || s.find('E') != std::string::npos)
+            {
+                // Parse as floating point and store as bit pattern
+                float floatValue = std::stof(s);
+                uint32_t bits;
+                std::memcpy(&bits, &floatValue, sizeof(float));
+                op.immediateValue = static_cast<uint64_t>(bits);
+            }
+            else
+            {
+                // Parse as integer
+                op.immediateValue = std::stoll(s);
+            }
         }
         catch (...)
         {
@@ -823,6 +936,16 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
         }
         return op;
     }
+    
+    // If nothing else matched, treat it as a label (for branch targets)
+    // Labels are identifiers that don't match any of the above patterns
+    if (!s.empty() && (std::isalpha(s[0]) || s[0] == '_'))
+    {
+        op.type = OperandType::LABEL;
+        op.labelName = s;
+        return op;
+    }
+    
     op.type = OperandType::UNKNOWN;
     return op;
 }

@@ -17,8 +17,9 @@ public:
         // Note: RegisterBank and MemorySubsystem will be set via setComponents()
         // They are owned externally (by PTXVM)
         
-        // Initialize warp scheduler with default configuration
-        m_warpScheduler = std::make_unique<WarpScheduler>(4, 32);
+        // Initialize warp scheduler with single warp for now
+        // TODO: Support multiple warps with per-thread register files
+        m_warpScheduler = std::make_unique<WarpScheduler>(1, 32);
         if (!m_warpScheduler->initialize()) {
             throw std::runtime_error("Failed to initialize warp scheduler");
         }
@@ -240,8 +241,8 @@ public:
         
         // Handle register-indirect addressing [%rX] or [%rX+offset]
         if (instr.sources[0].isIndirect) {
-            // Get base address from register
-            uint64_t baseAddr = m_registerBank->readRegister(instr.sources[0].registerIndex);
+            // Get base address from register (use baseRegisterIndex for memory operands)
+            uint64_t baseAddr = m_registerBank->readRegister(instr.sources[0].baseRegisterIndex);
             address = baseAddr + instr.sources[0].address;  // Add offset if any
         }
         
@@ -317,9 +318,13 @@ public:
         
         // Handle register-indirect addressing [%rX] or [%rX+offset]
         if (instr.dest.isIndirect) {
-            // Get base address from register
-            uint64_t baseAddr = m_registerBank->readRegister(instr.dest.registerIndex);
+            // Get base address from register (use baseRegisterIndex for memory operands)
+            uint64_t baseAddr = m_registerBank->readRegister(instr.dest.baseRegisterIndex);
+            std::cout << "ST: Base address from %r" << instr.dest.baseRegisterIndex 
+                      << " = 0x" << std::hex << baseAddr 
+                      << ", offset = 0x" << instr.dest.address << std::dec << std::endl;
             address = baseAddr + instr.dest.address;  // Add offset if any
+            std::cout << "ST: Final address = 0x" << std::hex << address << std::dec << std::endl;
         }
         
         // Increment appropriate memory write counter
@@ -370,10 +375,33 @@ public:
     bool executeDecodedInstruction(const DecodedInstruction& instr) {
         // Check if instruction has predicate and should be skipped
         if (instr.hasPredicate) {
-            // Here we get it from our predicate handler
-            bool predicateValue = m_predicateHandler->evaluatePredicate(instr);
+            // Read predicate value - can be from predicate register or integer register
+            // PTX allows using integer registers as predicates (0 = false, non-zero = true)
+            bool predicateRegValue;
             
-            if (!predicateValue) {
+            // Check if this is within predicate register range (typically 0-7 or 0-15)
+            // If beyond that, it's likely stored in a regular register
+            if (instr.predicateIndex < 16) {
+                // Try to read as predicate register
+                try {
+                    predicateRegValue = m_registerBank->readPredicate(instr.predicateIndex);
+                } catch (const std::out_of_range&) {
+                    // If out of range, read from regular register instead
+                    uint64_t regValue = m_registerBank->readRegister(instr.predicateIndex);
+                    predicateRegValue = (regValue != 0);
+                }
+            } else {
+                // Definitely a regular register
+                uint64_t regValue = m_registerBank->readRegister(instr.predicateIndex);
+                predicateRegValue = (regValue != 0);
+            }
+            
+            // instr.predicateValue indicates if predicate is negated:
+            // - true (not negated): execute if predicate register is true
+            // - false (negated): execute if predicate register is false
+            bool shouldExecute = (instr.predicateValue == predicateRegValue);
+            
+            if (!shouldExecute) {
                 // Skip this instruction
                 m_currentInstructionIndex++;
                 return true;
@@ -824,11 +852,43 @@ public:
             return true;
         }
         
-        // Get source operand
-        int64_t src = getSourceValue(instr.sources[0]);
-        
-        // Store result in destination register
-        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(src));
+        // Handle based on data type (mov.f32, mov.s32, etc.)
+        if (instr.dataType == DataType::F32) {
+            // Floating point move
+            float src;
+            if (instr.sources[0].type == OperandType::IMMEDIATE) {
+                // Convert immediate to float
+                uint32_t bits = static_cast<uint32_t>(instr.sources[0].immediateValue);
+                std::memcpy(&src, &bits, sizeof(float));
+            } else if (instr.sources[0].type == OperandType::REGISTER) {
+                src = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
+            } else {
+                std::cerr << "Invalid MOV.F32 source operand type" << std::endl;
+                m_currentInstructionIndex++;
+                return true;
+            }
+            
+            m_registerBank->writeFloatRegister(instr.dest.registerIndex, src);
+        } else if (instr.dataType == DataType::F64) {
+            // Double move
+            double src;
+            if (instr.sources[0].type == OperandType::IMMEDIATE) {
+                uint64_t bits = instr.sources[0].immediateValue;
+                std::memcpy(&src, &bits, sizeof(double));
+            } else if (instr.sources[0].type == OperandType::REGISTER) {
+                src = m_registerBank->readDoubleRegister(instr.sources[0].registerIndex);
+            } else {
+                std::cerr << "Invalid MOV.F64 source operand type" << std::endl;
+                m_currentInstructionIndex++;
+                return true;
+            }
+            
+            m_registerBank->writeDoubleRegister(instr.dest.registerIndex, src);
+        } else {
+            // Integer move (default)
+            int64_t src = getSourceValue(instr.sources[0]);
+            m_registerBank->writeRegister(instr.dest.registerIndex, static_cast<uint64_t>(src));
+        }
         
         // Move to next instruction
         m_currentInstructionIndex++;
@@ -849,13 +909,13 @@ public:
         
         // Handle register-indirect addressing [%rX] or [%rX+offset]
         if (instr.sources[0].isIndirect) {
-            // Get base address from register
-            uint64_t baseAddr = m_registerBank->readRegister(instr.sources[0].registerIndex);
+            // Get base address from register (use baseRegisterIndex for memory operands)
+            uint64_t baseAddr = m_registerBank->readRegister(instr.sources[0].baseRegisterIndex);
             address = baseAddr + instr.sources[0].address;  // Add offset if any
         }
         
-        // Determine memory space from address
-        MemorySpace space = determineMemorySpace(address);
+        // Use memory space from instruction (parsed from PTX modifiers)
+        MemorySpace space = instr.memorySpace;
         
         // Increment appropriate memory read counter
         switch (space) {
@@ -934,13 +994,16 @@ public:
         
         // Handle register-indirect addressing [%rX] or [%rX+offset]
         if (instr.dest.isIndirect) {
-            // Get base address from register
-            uint64_t baseAddr = m_registerBank->readRegister(instr.dest.registerIndex);
+            // Get base address from register (use baseRegisterIndex for memory operands)
+            uint64_t baseAddr = m_registerBank->readRegister(instr.dest.baseRegisterIndex);
+            std::cout << "ST DEBUG: baseRegisterIndex=" << instr.dest.baseRegisterIndex 
+                      << ", baseAddr=0x" << std::hex << baseAddr 
+                      << ", offset=0x" << instr.dest.address << std::dec << std::endl;
             address = baseAddr + instr.dest.address;  // Add offset if any
         }
         
-        // Determine memory space from address
-        MemorySpace space = determineMemorySpace(address);
+        // Use memory space from instruction (parsed from PTX modifiers)
+        MemorySpace space = instr.memorySpace;
         
         // Increment appropriate memory write counter
         switch (space) {
@@ -960,6 +1023,11 @@ public:
                 // Handle other memory spaces
                 break;
         }
+        
+        // DEBUG: Print store operation
+        std::cout << "ST: writing value " << src << " to address 0x" << std::hex << address << std::dec 
+                  << " in space " << static_cast<int>(space) 
+                  << " dataType=" << static_cast<int>(instr.dataType) << std::endl;
         
         // Write to memory based on data type
         switch (instr.dataType) {
@@ -991,19 +1059,47 @@ public:
     
     // Execute BRA (branch) instruction
     bool executeBRA(const DecodedInstruction& instr) {
+        // BRA should have exactly 1 source operand (the branch target)
         if (instr.sources.size() != 1) {
-            std::cerr << "Invalid BRA instruction format" << std::endl;
+            std::cerr << "Invalid BRA instruction: expected 1 source operand, got " 
+                      << instr.sources.size() << std::endl;
             m_currentInstructionIndex++;
             return true;
         }
         
         // Get branch target
+        size_t target = m_currentInstructionIndex + 1; // Default: next instruction
+        bool targetResolved = false;
+        
+        if (instr.sources[0].type == OperandType::LABEL) {
+            // Branch to label - resolve label to instruction address
+            if (resolveLabel(instr.sources[0].labelName, target)) {
+                targetResolved = true;
+            } else {
+                std::cerr << "Failed to resolve label: " << instr.sources[0].labelName << std::endl;
+                m_currentInstructionIndex++;
+                return true;
+            }
+        } else if (instr.sources[0].type == OperandType::IMMEDIATE) {
+            // Direct branch with immediate address
+            target = static_cast<size_t>(instr.sources[0].immediateValue);
+            targetResolved = true;
+        } else if (instr.sources[0].type == OperandType::REGISTER) {
+            // Indirect branch - address in register
+            int64_t regValue = getSourceValue(instr.sources[0]);
+            target = static_cast<size_t>(regValue);
+            targetResolved = true;
+        } else {
+            std::cerr << "Unsupported branch target type: " << static_cast<int>(instr.sources[0].type) << std::endl;
+            m_currentInstructionIndex++;
+            return true;
+        }
+        
         // Increment branch counter
         m_performanceCounters->increment(PerformanceCounterIDs::BRANCHES);
         
-        if (instr.sources[0].type == OperandType::IMMEDIATE) {
-            // Direct branch
-            size_t target = static_cast<size_t>(instr.sources[0].immediateValue);
+        // Branch to target
+        if (targetResolved) {
             if (target == m_currentInstructionIndex + 1) {
                 // This is a sequential branch, not divergent
                 m_currentInstructionIndex++;
@@ -1013,24 +1109,6 @@ public:
                 // Increment divergent branch counter
                 m_performanceCounters->increment(PerformanceCounterIDs::DIVERGENT_BRANCHES);
             }
-        } else if (instr.sources[0].type == OperandType::REGISTER) {
-            // Indirect branch
-            int64_t regValue = getSourceValue(instr.sources[0]);
-            size_t target = static_cast<size_t>(regValue);
-            
-            if (target == m_currentInstructionIndex + 1) {
-                // This is a sequential branch, not divergent
-                m_currentInstructionIndex++;
-            } else {
-                // This is a non-sequential branch
-                m_currentInstructionIndex = target;
-                // Increment divergent branch counter
-                m_performanceCounters->increment(PerformanceCounterIDs::DIVERGENT_BRANCHES);
-            }
-        } else {
-            std::cerr << "Unsupported branch target type" << std::endl;
-            m_currentInstructionIndex++;
-            return true;
         }
         
         return true;
@@ -1068,18 +1146,26 @@ public:
         } else if (instr.sources[0].type == OperandType::REGISTER) {
             paramOffset = impl.m_registerBank->readRegister(instr.sources[0].registerIndex);
         } else if (instr.sources[0].type == OperandType::MEMORY) {
-            // [param_name] - use offset 0 or try to resolve from symbol table
-            paramOffset = 0;
+            // [param_name] - the address field contains the resolved parameter offset
+            paramOffset = instr.sources[0].address;
         } else {
-            std::cerr << "Invalid source operand type for LD_PARAM" << std::endl;
+            std::cerr << "Invalid source operand type for LD_PARAM: type=" << static_cast<int>(instr.sources[0].type) << std::endl;
             impl.m_currentInstructionIndex++;
             return true;
         }
+        
+        // DEBUG: Print LD_PARAM operation
+        std::cout << "LD_PARAM: loading from offset " << paramOffset 
+                  << " (source type=" << static_cast<int>(instr.sources[0].type) << ")" << std::endl;
         
         // Read from parameter memory
         // Note: Use buffer-relative addressing (paramOffset directly), not absolute address
         // The PARAMETER memory space buffer starts at offset 0
         paramValue = impl.m_memorySubsystem->read<uint64_t>(MemorySpace::PARAMETER, paramOffset);
+        
+        // DEBUG: Print loaded value
+        std::cout << "LD_PARAM: loaded value 0x" << std::hex << paramValue << std::dec 
+                  << " into %r" << instr.dest.registerIndex << std::endl;
         
         // Store result in destination register
         impl.storeRegisterValue(instr.dest.registerIndex, paramValue);
@@ -1307,7 +1393,9 @@ public:
     
     // Execute SETP instruction
     bool executeSETP(const DecodedInstruction& instr) {
-        if (instr.dest.type != OperandType::PREDICATE || instr.sources.size() != 2) {
+        // SETP can write to either predicate registers (%p) or integer registers (%r)
+        if ((instr.dest.type != OperandType::PREDICATE && instr.dest.type != OperandType::REGISTER) 
+            || instr.sources.size() != 2) {
             std::cerr << "Invalid SETP instruction format" << std::endl;
             m_currentInstructionIndex++;
             return true;
@@ -1315,12 +1403,14 @@ public:
         
         bool result = false;
         
+        // Get source values using getSourceValue (handles both registers and immediates)
+        int64_t src1_val = getSourceValue(instr.sources[0]);
+        int64_t src2_val = getSourceValue(instr.sources[1]);
+        
         // Compare based on data type
         if (instr.dataType == DataType::S32) {
-            int32_t src1 = static_cast<int32_t>(
-                m_registerBank->readRegister(instr.sources[0].registerIndex));
-            int32_t src2 = static_cast<int32_t>(
-                m_registerBank->readRegister(instr.sources[1].registerIndex));
+            int32_t src1 = static_cast<int32_t>(src1_val);
+            int32_t src2 = static_cast<int32_t>(src2_val);
             
             switch (instr.compareOp) {
                 case CompareOp::LT: result = (src1 < src2); break;
@@ -1332,10 +1422,8 @@ public:
                 default: break;
             }
         } else if (instr.dataType == DataType::U32) {
-            uint32_t src1 = static_cast<uint32_t>(
-                m_registerBank->readRegister(instr.sources[0].registerIndex));
-            uint32_t src2 = static_cast<uint32_t>(
-                m_registerBank->readRegister(instr.sources[1].registerIndex));
+            uint32_t src1 = static_cast<uint32_t>(src1_val);
+            uint32_t src2 = static_cast<uint32_t>(src2_val);
             
             switch (instr.compareOp) {
                 case CompareOp::LO: result = (src1 < src2); break;
@@ -1347,8 +1435,9 @@ public:
                 default: break;
             }
         } else if (instr.dataType == DataType::F32) {
-            float src1 = m_registerBank->readFloatRegister(instr.sources[0].registerIndex);
-            float src2 = m_registerBank->readFloatRegister(instr.sources[1].registerIndex);
+            // For float comparisons, interpret the int64_t as float bits
+            float src1 = *reinterpret_cast<float*>(&src1_val);
+            float src2 = *reinterpret_cast<float*>(&src2_val);
             
             switch (instr.compareOp) {
                 case CompareOp::LT: result = (src1 < src2); break;
@@ -1360,8 +1449,9 @@ public:
                 default: break;
             }
         } else if (instr.dataType == DataType::F64) {
-            double src1 = m_registerBank->readDoubleRegister(instr.sources[0].registerIndex);
-            double src2 = m_registerBank->readDoubleRegister(instr.sources[1].registerIndex);
+            // For double comparisons, interpret the int64_t as double bits
+            double src1 = *reinterpret_cast<double*>(&src1_val);
+            double src2 = *reinterpret_cast<double*>(&src2_val);
             
             switch (instr.compareOp) {
                 case CompareOp::LT: result = (src1 < src2); break;
@@ -1374,8 +1464,14 @@ public:
             }
         }
         
-        // Write result to predicate register
-        m_registerBank->writePredicate(instr.dest.predicateIndex, result);
+        // Write result - can be to predicate register or integer register
+        if (instr.dest.type == OperandType::PREDICATE) {
+            m_registerBank->writePredicate(instr.dest.predicateIndex, result);
+        } else if (instr.dest.type == OperandType::REGISTER) {
+            // Write to integer register (0 or 1)
+            m_registerBank->writeRegister(instr.dest.registerIndex, result ? 1 : 0);
+        }
+        
         m_performanceCounters->increment(PerformanceCounterIDs::INSTRUCTIONS_EXECUTED);
         
         m_currentInstructionIndex++;

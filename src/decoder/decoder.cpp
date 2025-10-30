@@ -156,10 +156,15 @@ bool Decoder::Impl::decodeSingleInstruction(const PTXInstruction& ptInstr, Decod
     
     // Handle destination operand
     if (!ptInstr.dest.empty()) {
-        // Parse destination register
-        // In a real implementation, this would involve register allocation
-        outDecodedInstr.dest.type = OperandType::REGISTER;
-        outDecodedInstr.dest.registerIndex = parseRegister(ptInstr.dest);
+        // Check if destination is a predicate register (%p...)
+        if (ptInstr.dest.size() >= 2 && ptInstr.dest[0] == '%' && ptInstr.dest[1] == 'p') {
+            outDecodedInstr.dest.type = OperandType::PREDICATE;
+            outDecodedInstr.dest.predicateIndex = parseRegister(ptInstr.dest);
+        } else {
+            // Regular register
+            outDecodedInstr.dest.type = OperandType::REGISTER;
+            outDecodedInstr.dest.registerIndex = parseRegister(ptInstr.dest);
+        }
         outDecodedInstr.dest.isAddress = false;
         outDecodedInstr.dest.isIndirect = false;
     }
@@ -184,8 +189,11 @@ bool Decoder::Impl::decodeSingleInstruction(const PTXInstruction& ptInstr, Decod
             decodedOperand.isAddress = true;
             decodedOperand.isIndirect = (source.find('*') != std::string::npos);
         } else {
-            // Handle other operand types
-            decodedOperand.type = OperandType::UNKNOWN;
+            // Treat as a label (for branch instructions)
+            decodedOperand.type = OperandType::LABEL;
+            decodedOperand.labelName = source;
+            decodedOperand.isAddress = false;
+            decodedOperand.isIndirect = false;
         }
         
         outDecodedInstr.sources.push_back(decodedOperand);

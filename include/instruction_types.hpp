@@ -12,6 +12,7 @@ enum class OperandType {
     IMMEDIATE,     // Immediate value
     MEMORY,        // Memory address
     PREDICATE,     // Predicate operand
+    LABEL,         // Label operand (for branches)
     UNKNOWN        // Unknown operand type
 };
 
@@ -144,6 +145,14 @@ struct Operand {
     // Additional flags
     bool isAddress;                // Is this an address operand?
     bool isIndirect;               // Is this an indirect access?
+    
+    // For register-indirect memory addressing [%rX+offset]
+    // Since registerIndex and address share the same union slot,
+    // we need a separate field for the base register when doing [%rX+offset]
+    uint32_t baseRegisterIndex;    // Base register for indirect addressing
+    
+    // For LABEL type - stored outside union
+    std::string labelName;         // Label name for branch targets
 };
 
 // Define decoded instruction structure

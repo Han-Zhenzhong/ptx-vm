@@ -163,8 +163,10 @@ void PTXVM::mapKernelParametersToRegisters() {
 
 bool PTXVM::initialize() {
     // Initialize register bank first (allocate register arrays)
-    // Default: 32 integer registers, 32 float registers
-    if (!pImpl->m_registerBank->initialize(32, 32)) {
+    // Allocate enough registers for typical PTX programs
+    // PTX typically uses: %r0-%rN (integer), %f0-%fN (float), %d0-%dN (double), %p0-%p7 (predicate)
+    // We allocate 256 registers for each type to support most programs
+    if (!pImpl->m_registerBank->initialize(256, 256)) {
         std::cerr << "Failed to initialize register bank" << std::endl;
         return false;
     }
