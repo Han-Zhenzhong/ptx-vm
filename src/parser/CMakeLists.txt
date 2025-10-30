@@ -12,6 +12,7 @@ target_include_directories(parser PRIVATE
 
 # Link libraries
 target_link_libraries(parser
+    logger
     decoder
 )
 

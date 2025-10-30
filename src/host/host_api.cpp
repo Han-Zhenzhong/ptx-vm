@@ -1,4 +1,5 @@
 #include "host_api.hpp"
+#include "logger.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -29,7 +30,7 @@ public:
     // Load a program from file
     bool loadProgram(const std::string& filename) {
         if (!m_vm) {
-            std::cerr << "VM not initialized" << std::endl;
+            Logger::error("VM not initialized");
             return false;
         }
         
@@ -40,9 +41,9 @@ public:
         
         if (success) {
             m_isProgramLoaded = true;
-            std::cout << "Program loaded successfully: " << filename << std::endl;
+            Logger::info("Program loaded successfully: " + filename);
         } else {
-            std::cerr << "Failed to load PTX program: " << filename << std::endl;
+            Logger::error("Failed to load PTX program: " + filename);
         }
         
         return success;
@@ -150,9 +151,9 @@ public:
         }
 
         try {
-            std::cout << "Launching kernel with function handle: " << f << std::endl;
-            std::cout << "Grid dimensions: " << gridDimX << " x " << gridDimY << " x " << gridDimZ << std::endl;
-            std::cout << "Block dimensions: " << blockDimX << " x " << blockDimY << " x " << blockDimZ << std::endl;
+            Logger::debug("Launching kernel with function handle: " + std::to_string(f));
+            Logger::debug("Grid dimensions: " + std::to_string(gridDimX) + " x " + std::to_string(gridDimY) + " x " + std::to_string(gridDimZ));
+            Logger::debug("Block dimensions: " + std::to_string(blockDimX) + " x " + std::to_string(blockDimY) + " x " + std::to_string(blockDimZ));
 
             PTXExecutor& executor = m_vm->getExecutor();
             
@@ -164,7 +165,7 @@ public:
                     const PTXFunction& entryFunc = program.functions[0];
                     MemorySubsystem& mem = executor.getMemorySubsystem();
                     
-                    std::cout << "Setting up " << entryFunc.parameters.size() << " kernel parameters..." << std::endl;
+                    Logger::debug("Setting up " + std::to_string(entryFunc.parameters.size()) + " kernel parameters...");
                     
                     // 将每个参数复制到参数内存
                     size_t offset = 0;
@@ -173,9 +174,9 @@ public:
                         
                         // kernelParams[i] 指向实际的参数数据
                         if (kernelParams[i] != nullptr) {
-                            std::cout << "  Parameter " << i << " (" << param.name << "): "
-                                      << "type=" << param.type << ", size=" << param.size 
-                                      << ", offset=" << offset << std::endl;
+                            Logger::debug("  Parameter " + std::to_string(i) + " (" + param.name + "): " +
+                                         "type=" + param.type + ", size=" + std::to_string(param.size) + 
+                                         ", offset=" + std::to_string(offset));
                             
                             // 将参数数据复制到参数内存 (基址 0x0)
                             const uint8_t* paramData = static_cast<const uint8_t*>(kernelParams[i]);
@@ -189,7 +190,7 @@ public:
                         offset += param.size;
                     }
                     
-                    std::cout << "Kernel parameters successfully copied to parameter memory" << std::endl;
+                    Logger::debug("Kernel parameters successfully copied to parameter memory");
                 }
             }
 
@@ -201,7 +202,7 @@ public:
             return success ? CUDA_SUCCESS : CUDA_ERROR_LAUNCH_FAILED;
             
         } catch (const std::exception& e) {
-            std::cerr << "Kernel launch error: " << e.what() << std::endl;
+            Logger::error("Kernel launch error: " + std::string(e.what()));
             return CUDA_ERROR_UNKNOWN;
         } catch (...) {
             return CUDA_ERROR_UNKNOWN;

@@ -1,4 +1,5 @@
 #include "parser.hpp"
+#include "logger.hpp"
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -769,8 +770,8 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
         {
             std::string baseReg = trim(inner.substr(0, plusPos));
             std::string offsetStr = trim(inner.substr(plusPos + 1));
-            std::cout << "Parser DEBUG: inner='" << inner << "', plusPos=" << plusPos 
-                      << ", baseReg='" << baseReg << "', offsetStr='" << offsetStr << "'" << std::endl;
+            Logger::debug("Parser: inner='" + inner + "', plusPos=" + std::to_string(plusPos) + 
+                         ", baseReg='" + baseReg + "', offsetStr='" + offsetStr + "'");
             
             // Parse the base register if it starts with %
             if (!baseReg.empty() && baseReg[0] == '%')
@@ -792,7 +793,7 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
                     i++;
                 }
                 
-                std::cout << "Parser DEBUG: baseReg='" << baseReg << "', regType='" << regType << "', numPart='" << numPart << "'" << std::endl;
+                Logger::debug("Parser: baseReg='" + baseReg + "', regType='" + regType + "', numPart='" + numPart + "'");
                 if (!numPart.empty())
                 {
                     int regNum = std::stoi(numPart);
@@ -818,9 +819,9 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
             // Parse the offset
             try {
                 op.address = std::stoull(offsetStr);
-                std::cout << "Parser DEBUG: Parsed [" << baseReg << "+" << offsetStr 
-                          << "] -> baseRegisterIndex=" << op.baseRegisterIndex 
-                          << ", offset=" << op.address << std::endl;
+                Logger::debug("Parser: Parsed [" + baseReg + "+" + offsetStr + 
+                             "] -> baseRegisterIndex=" + std::to_string(op.baseRegisterIndex) + 
+                             ", offset=" + std::to_string(op.address));
             } catch (...) {
                 op.address = 0;
             }
