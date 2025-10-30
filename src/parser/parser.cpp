@@ -775,19 +775,39 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
             // Parse the base register if it starts with %
             if (!baseReg.empty() && baseReg[0] == '%')
             {
+                // Extract register type and number
+                std::string regType;
                 std::string numPart;
-                // Skip % and any register type letter (r, f, d, p)
-                for (size_t i = 1; i < baseReg.size(); ++i)
-                {
-                    if (std::isdigit(baseReg[i]))
-                    {
-                        numPart += baseReg[i];
-                    }
+                size_t i = 1;
+                
+                // Get register type (r, rd, f, fd, etc.)
+                while (i < baseReg.size() && !std::isdigit(baseReg[i])) {
+                    regType += baseReg[i];
+                    i++;
                 }
-                std::cout << "Parser DEBUG: baseReg='" << baseReg << "', numPart='" << numPart << "'" << std::endl;
+                
+                // Get register number
+                while (i < baseReg.size() && std::isdigit(baseReg[i])) {
+                    numPart += baseReg[i];
+                    i++;
+                }
+                
+                std::cout << "Parser DEBUG: baseReg='" << baseReg << "', regType='" << regType << "', numPart='" << numPart << "'" << std::endl;
                 if (!numPart.empty())
                 {
-                    op.baseRegisterIndex = std::stoi(numPart);
+                    int regNum = std::stoi(numPart);
+                    // Apply offset based on register type
+                    if (regType == "r") {
+                        op.baseRegisterIndex = regNum;
+                    } else if (regType == "rd") {
+                        op.baseRegisterIndex = 256 + regNum;
+                    } else if (regType == "f") {
+                        op.baseRegisterIndex = 512 + regNum;
+                    } else if (regType == "fd") {
+                        op.baseRegisterIndex = 768 + regNum;
+                    } else {
+                        op.baseRegisterIndex = regNum;
+                    }
                 }
                 else
                 {
@@ -830,19 +850,39 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
             }
             else if (!inner.empty() && inner[0] == '%')
             {
-                // Register indirect addressing like [%r0]
-                // Parse the register number (skip % and register type letter)
+                // Register indirect addressing like [%rd0]
+                // Extract register type and number
+                std::string regType;
                 std::string numPart;
-                for (size_t i = 1; i < inner.size(); ++i)
-                {
-                    if (std::isdigit(inner[i]))
-                    {
-                        numPart += inner[i];
-                    }
+                size_t i = 1;
+                
+                // Get register type (r, rd, f, fd, etc.)
+                while (i < inner.size() && !std::isdigit(inner[i])) {
+                    regType += inner[i];
+                    i++;
                 }
+                
+                // Get register number
+                while (i < inner.size() && std::isdigit(inner[i])) {
+                    numPart += inner[i];
+                    i++;
+                }
+                
                 if (!numPart.empty())
                 {
-                    op.baseRegisterIndex = std::stoi(numPart);
+                    int regNum = std::stoi(numPart);
+                    // Apply offset based on register type
+                    if (regType == "r") {
+                        op.baseRegisterIndex = regNum;
+                    } else if (regType == "rd") {
+                        op.baseRegisterIndex = 256 + regNum;
+                    } else if (regType == "f") {
+                        op.baseRegisterIndex = 512 + regNum;
+                    } else if (regType == "fd") {
+                        op.baseRegisterIndex = 768 + regNum;
+                    } else {
+                        op.baseRegisterIndex = regNum;
+                    }
                 }
                 else
                 {
@@ -879,29 +919,53 @@ Operand PTXParser::Impl::parseOperand(const std::string &str)
             return op;
         }
         
-        // Regular register (%rN, %fN, %dN, etc.)
+        // Regular register (%rN, %fN, %dN, %rdN, etc.)
         op.type = OperandType::REGISTER;
         
         // Parse register type and number
-        // PTX registers: %rN (int), %fN (float), %dN (double), %pN (predicate)
-        // We use a unified register space with all register types
-        // The register number is parsed directly without type prefix
+        // PTX has separate register spaces for different types
+        // We use offsets to distinguish them in our unified register file:
+        // %r0-%r255:  indices 0-255      (32-bit integer)
+        // %rd0-%rd255: indices 256-511   (64-bit integer)
+        // %f0-%f255:  indices 512-767    (32-bit float)
+        // %fd0-%fd255: indices 768-1023  (64-bit float)
+        
+        // Extract register type prefix and number
+        std::string regType;
         std::string numPart;
-        for (size_t i = 1; i < s.size(); ++i)
-        {
-            if (std::isdigit(s[i]))
-            {
-                numPart += s[i];
-            }
+        size_t i = 1;
+        
+        // Get register type (r, rd, f, fd, etc.)
+        while (i < s.size() && !std::isdigit(s[i])) {
+            regType += s[i];
+            i++;
+        }
+        
+        // Get register number
+        while (i < s.size() && std::isdigit(s[i])) {
+            numPart += s[i];
+            i++;
         }
         
         if (!numPart.empty())
         {
-            op.registerIndex = std::stoi(numPart);
+            int regNum = std::stoi(numPart);
+            
+            // Apply offset based on register type
+            if (regType == "r") {
+                op.registerIndex = regNum;  // 0-255
+            } else if (regType == "rd") {
+                op.registerIndex = 256 + regNum;  // 256-511
+            } else if (regType == "f") {
+                op.registerIndex = 512 + regNum;  // 512-767
+            } else if (regType == "fd") {
+                op.registerIndex = 768 + regNum;  // 768-1023
+            } else {
+                // Unknown register type, use base index
+                op.registerIndex = regNum;
+            }
         }
         
-        // Note: Register type (%r, %f, %d, %p) is implicit in the instruction
-        // The executor will handle type conversions based on instruction data type
         return op;
     }
     if (!s.empty() && s[0] == 'p' && s.size() > 1 && std::isdigit(s[1]))

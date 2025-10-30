@@ -177,11 +177,11 @@ public:
                                       << "type=" << param.type << ", size=" << param.size 
                                       << ", offset=" << offset << std::endl;
                             
-                            // 将参数数据复制到参数内存 (基址 0x1000)
+                            // 将参数数据复制到参数内存 (基址 0x0)
                             const uint8_t* paramData = static_cast<const uint8_t*>(kernelParams[i]);
                             for (size_t j = 0; j < param.size; ++j) {
                                 mem.write<uint8_t>(MemorySpace::PARAMETER, 
-                                                  0x1000 + offset + j, 
+                                                  offset + j, 
                                                   paramData[j]);
                             }
                         }

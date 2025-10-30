@@ -1,0 +1,41 @@
+// Simple PTX example for testing the virtual machine
+// This program performs basic arithmetic operations
+
+.version 6.0
+.target sm_50
+.address_size 64
+
+// Define entry point function
+.entry simple_math_kernel (
+    .param .u64 result_ptr
+)
+{
+    // Declare registers
+    .reg .f32 %f<10>;
+    .reg .s32 %r<10>;
+    
+    // Load input parameters
+    ld.param.u64 %r0, [result_ptr];
+    
+    // Initialize some values
+    mov.f32 %f0, 3.14159265;
+    mov.s32 %r1, 42;
+    mov.s32 %r2, 7;
+    
+    // Perform arithmetic operations
+    add.s32 %r3, %r1, %r2;   // r3 = 42 + 7 = 49
+    sub.s32 %r4, %r1, %r2;   // r4 = 42 - 7 = 35
+    mul.s32 %r5, %r1, %r2;   // r5 = 42 * 7 = 294
+    div.s32 %r6, %r1, %r2;   // r6 = 42 / 7 = 6
+    rem.s32 %r7, %r1, %r2;   // r7 = 42 % 7 = 0
+    
+    // Store results to memory
+    st.global.s32 [%r0], %r3;      // Store add result
+    st.global.s32 [%r0+4], %r4;    // Store subtract result
+    st.global.s32 [%r0+8], %r5;    // Store multiply result
+    st.global.s32 [%r0+12], %r6;   // Store divide result
+    st.global.s32 [%r0+16], %r7;   // Store remainder result
+    
+    // Exit kernel
+    exit;
+}

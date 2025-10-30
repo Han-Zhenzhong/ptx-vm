@@ -98,7 +98,7 @@ void PTXVM::setKernelParameters(const std::vector<KernelParameter>& parameters) 
 
 bool PTXVM::setupKernelParameters() {
     // Setup kernel parameters in VM memory
-    // Parameters are written to the PARAMETER memory space at base address 0x1000
+    // Parameters are written to the PARAMETER memory space starting at offset 0x0
     // For this implementation:
     // - param.devicePtr contains the actual parameter VALUE (e.g., a pointer or scalar)
     // - param.size is the size of the parameter in bytes
@@ -164,9 +164,13 @@ void PTXVM::mapKernelParametersToRegisters() {
 bool PTXVM::initialize() {
     // Initialize register bank first (allocate register arrays)
     // Allocate enough registers for typical PTX programs
-    // PTX typically uses: %r0-%rN (integer), %f0-%fN (float), %d0-%dN (double), %p0-%p7 (predicate)
-    // We allocate 256 registers for each type to support most programs
-    if (!pImpl->m_registerBank->initialize(256, 256)) {
+    // PTX uses separate register spaces that we map to a unified register file:
+    // %r0-%r255:   indices 0-255      (32-bit integer)
+    // %rd0-%rd255: indices 256-511    (64-bit integer)  
+    // %f0-%f255:   indices 512-767    (32-bit float)
+    // %fd0-%fd255: indices 768-1023   (64-bit float)
+    // We allocate 1024 registers total to accommodate all types
+    if (!pImpl->m_registerBank->initialize(1024, 1024)) {
         std::cerr << "Failed to initialize register bank" << std::endl;
         return false;
     }

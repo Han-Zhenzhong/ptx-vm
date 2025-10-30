@@ -14,12 +14,13 @@
 {
     // Declare registers
     .reg .s32 %r<20>;
+    .reg .u64 %rd<10>;           // 64-bit registers for pointers
     .reg .f32 %f<10>;
     .reg .pred %p<5>;
     
     // Load input parameters
-    ld.param.u64 %r1, [input_ptr];
-    ld.param.u64 %r2, [output_ptr];
+    ld.param.u64 %rd1, [input_ptr];
+    ld.param.u64 %rd2, [output_ptr];
     ld.param.u32 %r3, [data_size];
     
     // Initialize loop variables
@@ -41,17 +42,18 @@ loop_body:
     // Calculate memory addresses
     // address = base + index * element_size
     mul.lo.s32 %r6, %r4, 4;      // r6 = i * 4 (element offset)
-    add.s32 %r7, %r1, %r6;       // r7 = input_ptr + offset
-    add.s32 %r8, %r2, %r6;       // r8 = output_ptr + offset
+    cvt.u64.s32 %rd3, %r6;       // Convert offset to 64-bit
+    add.u64 %rd4, %rd1, %rd3;    // rd4 = input_ptr + offset
+    add.u64 %rd5, %rd2, %rd3;    // rd5 = output_ptr + offset
     
     // Load input value
-    ld.global.s32 %r9, [%r7];    // r9 = input[i]
+    ld.global.s32 %r9, [%rd4];   // r9 = input[i]
     
     // Perform computation (multiply by 2)
     shl.b32 %r10, %r9, 1;        // r10 = r9 << 1 (equivalent to r9 * 2)
     
     // Store result
-    st.global.s32 [%r8], %r10;   // output[i] = input[i] * 2
+    st.global.s32 [%rd5], %r10;  // output[i] = input[i] * 2
     
     // Increment loop counter
     add.s32 %r4, %r4, 1;         // i++

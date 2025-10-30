@@ -808,11 +808,11 @@ public:
                                  << ", offset=" << offset;
                             printMessage(poss.str());
                             
-                            // Copy parameter data to parameter memory (base address 0x1000)
+                            // Copy parameter data to parameter memory (base address 0x0)
                             const uint8_t* paramData = static_cast<const uint8_t*>(kernelParams[i]);
                             for (size_t j = 0; j < param.size; ++j) {
                                 mem.write<uint8_t>(MemorySpace::PARAMETER, 
-                                                  0x1000 + offset + j, 
+                                                  offset + j, 
                                                   paramData[j]);
                             }
                         }

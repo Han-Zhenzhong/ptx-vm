@@ -320,11 +320,12 @@ public:
         if (instr.dest.isIndirect) {
             // Get base address from register (use baseRegisterIndex for memory operands)
             uint64_t baseAddr = m_registerBank->readRegister(instr.dest.baseRegisterIndex);
-            std::cout << "ST: Base address from %r" << instr.dest.baseRegisterIndex 
-                      << " = 0x" << std::hex << baseAddr 
-                      << ", offset = 0x" << instr.dest.address << std::dec << std::endl;
+            // Debug output (commented out to reduce log spam)
+            // std::cout << "ST: Base address from register " << instr.dest.baseRegisterIndex 
+            //           << " = 0x" << std::hex << baseAddr 
+            //           << ", offset = 0x" << instr.dest.address << std::dec << std::endl;
             address = baseAddr + instr.dest.address;  // Add offset if any
-            std::cout << "ST: Final address = 0x" << std::hex << address << std::dec << std::endl;
+            // std::cout << "ST: Final address = 0x" << std::hex << address << std::dec << std::endl;
         }
         
         // Increment appropriate memory write counter
@@ -758,11 +759,38 @@ public:
         int64_t src0 = getSourceValue(instr.sources[0]);
         int64_t src1 = getSourceValue(instr.sources[1]);
         
-        // Perform addition
-        int64_t result = src0 + src1;
+        // Perform addition based on data type
+        uint64_t result;
+        if (instr.dataType == DataType::S32 || instr.dataType == DataType::U32) {
+            // 32-bit addition - mask to 32 bits
+            uint32_t src0_32 = static_cast<uint32_t>(src0);
+            uint32_t src1_32 = static_cast<uint32_t>(src1);
+            uint32_t result32 = src0_32 + src1_32;
+            result = static_cast<uint64_t>(result32);  // Zero-extend to 64 bits
+            
+            // DEBUG
+            std::cout << "ADD.S32: reg" << instr.sources[0].registerIndex 
+                      << "(0x" << std::hex << static_cast<uint64_t>(src0) << "/" << std::dec << src0_32 << ")"
+                      << " + " << src1_32
+                      << " = " << result32
+                      << " -> reg" << instr.dest.registerIndex << std::endl;
+        } else {
+            // 64-bit or other types
+            result = static_cast<uint64_t>(src0 + src1);
+        }
+        
+        // DEBUG: Print ADD operation for U64 type
+        if (instr.dataType == DataType::U64) {
+            std::cout << "ADD.U64: reg" << instr.sources[0].registerIndex 
+                      << "(0x" << std::hex << static_cast<uint64_t>(src0) << ")"
+                      << " + reg" << instr.sources[1].registerIndex 
+                      << "(0x" << static_cast<uint64_t>(src1) << ")"
+                      << " = 0x" << result << std::dec
+                      << " -> reg" << instr.dest.registerIndex << std::endl;
+        }
         
         // Store result in destination register
-        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(result));
+        storeRegisterValue(instr.dest.registerIndex, result);
         
         // Move to next instruction
         m_currentInstructionIndex++;
@@ -781,11 +809,19 @@ public:
         int64_t src0 = getSourceValue(instr.sources[0]);
         int64_t src1 = getSourceValue(instr.sources[1]);
         
-        // Perform subtraction
-        int64_t result = src0 - src1;
+        // Perform subtraction based on data type
+        uint64_t result;
+        if (instr.dataType == DataType::S32 || instr.dataType == DataType::U32) {
+            // 32-bit subtraction - mask to 32 bits
+            uint32_t result32 = static_cast<uint32_t>(src0) - static_cast<uint32_t>(src1);
+            result = static_cast<uint64_t>(result32);  // Zero-extend to 64 bits
+        } else {
+            // 64-bit or other types
+            result = static_cast<uint64_t>(src0 - src1);
+        }
         
         // Store result in destination register
-        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(result));
+        storeRegisterValue(instr.dest.registerIndex, result);
         
         // Move to next instruction
         m_currentInstructionIndex++;
@@ -804,11 +840,29 @@ public:
         int64_t src0 = getSourceValue(instr.sources[0]);
         int64_t src1 = getSourceValue(instr.sources[1]);
         
-        // Perform multiplication
-        int64_t result = src0 * src1;
+        // Perform multiplication based on data type
+        uint64_t result;
+        if (instr.dataType == DataType::S32 || instr.dataType == DataType::U32) {
+            // 32-bit multiplication - mask to 32 bits
+            uint32_t src0_32 = static_cast<uint32_t>(src0);
+            uint32_t src1_32 = static_cast<uint32_t>(src1);
+            uint32_t result32 = src0_32 * src1_32;
+            result = static_cast<uint64_t>(result32);  // Zero-extend to 64 bits
+            
+            // DEBUG
+            std::cout << "MUL.S32: reg" << instr.sources[0].registerIndex 
+                      << "(0x" << std::hex << static_cast<uint64_t>(src0) << "/" << std::dec << src0_32 << ")"
+                      << " * reg" << instr.sources[1].registerIndex 
+                      << "(" << src1_32 << ")"
+                      << " = " << result32
+                      << " -> reg" << instr.dest.registerIndex << std::endl;
+        } else {
+            // 64-bit or other types
+            result = static_cast<uint64_t>(src0 * src1);
+        }
         
         // Store result in destination register
-        storeRegisterValue(instr.dest.registerIndex, static_cast<uint64_t>(result));
+        storeRegisterValue(instr.dest.registerIndex, result);
         
         // Move to next instruction
         m_currentInstructionIndex++;
@@ -1644,6 +1698,15 @@ public:
         else if (instr.srcType == DataType::U32 && instr.dstType == DataType::U64) {
             uint32_t src = static_cast<uint32_t>(m_registerBank->readRegister(instr.sources[0].registerIndex));
             uint64_t dst = static_cast<uint64_t>(src);
+            m_registerBank->writeRegister(instr.dest.registerIndex, dst);
+        }
+        else if (instr.srcType == DataType::S32 && instr.dstType == DataType::U64) {
+            // Sign-extend S32 to U64 (treat as signed, then convert to unsigned)
+            int32_t src = static_cast<int32_t>(m_registerBank->readRegister(instr.sources[0].registerIndex));
+            uint64_t dst = static_cast<uint64_t>(static_cast<int64_t>(src));
+            std::cout << "CVT.U64.S32: reg" << instr.sources[0].registerIndex 
+                      << "(" << src << ") -> reg" << instr.dest.registerIndex 
+                      << "(0x" << std::hex << dst << std::dec << ")" << std::endl;
             m_registerBank->writeRegister(instr.dest.registerIndex, dst);
         }
         else if (instr.srcType == DataType::S64 && instr.dstType == DataType::S32) {

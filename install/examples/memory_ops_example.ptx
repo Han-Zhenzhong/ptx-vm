@@ -1,0 +1,65 @@
+// Memory operations PTX example for testing the virtual machine
+// This program demonstrates various memory access patterns
+
+.version 6.0
+.target sm_50
+.address_size 64
+
+// Define entry point function
+.entry memory_ops_kernel (
+    .param .u64 input_ptr,
+    .param .u64 result_ptr
+)
+{
+    // Declare registers
+    .reg .s32 %r<10>;
+    
+    // Load parameter pointers
+    ld.param.u64 %r0, [input_ptr];
+    ld.param.u64 %r1, [result_ptr];
+    
+    // Load values from memory
+    ld.global.s32 %r2, [%r0];        // r2 = *input_ptr
+    ld.global.s32 %r3, [%r0+4];      // r3 = *(input_ptr+4)
+    
+    // Simple memory copy: copy 4 bytes from input to result
+    ld.global.s32 %r4, [%r0];        // r4 = *input_ptr
+    st.global.s32 [%r1], %r4;       // *result_ptr = r4
+    
+    // Memory swap: swap values at input and result
+    ld.global.s32 %r5, [%r0];        // r5 = *input_ptr
+    ld.global.s32 %r6, [%r1];        // r6 = *result_ptr
+    
+    st.global.s32 [%r0], %r6;       // *input_ptr = r6
+    st.global.s32 [%r1], %r5;       // *result_ptr = r5
+    
+    // Array processing: process 4 elements
+    mov.s32 %r7, 0;                 // r7 = index
+    mov.s32 %r8, 4;                 // r8 = array size
+    
+array_loop:
+    // Check loop condition
+    setp.lt.s32 %r9, %r7, %r8;     // r9 = (r7 < r8)
+    @%r9 bra array_body;           // Branch if condition true
+    bra array_end;                 // Branch unconditionally to end
+    
+array_body:
+    // Calculate address for input array
+    mul.lo.s32 %r9, %r7, 4;        // r9 = index * sizeof(int)
+    add.s32 %r10, %r0, %r9;       // r10 = &input_array[index]
+    
+    // Load value and increment
+    ld.global.s32 %r9, [%r10];     // r9 = input_array[index]
+    add.s32 %r9, %r9, 1;          // r9 = value + 1
+    
+    // Store back to memory
+    st.global.s32 [%r10], %r9;     // input_array[index] = value + 1
+    
+    // Increment index and loop
+    add.s32 %r7, %r7, 1;          // index++
+    bra array_loop;
+    
+array_end:
+    // Exit kernel
+    exit;
+}
