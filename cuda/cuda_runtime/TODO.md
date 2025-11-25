@@ -215,11 +215,46 @@
 ## 当前状态总结
 
 ✅ **已完成**: 所有接口声明和空实现，构建系统，文档框架  
-🔜 **下一步**: 实现阶段 1 的核心功能，特别是 Fat Binary 解析和内核启动  
+🔜 **下一步**: 实现阶段 1 的核心功能，集成 PTX VM 的 HostAPI  
 ⏰ **预计时间**: 
-  - 阶段 1: 2-3 天（核心功能）
-  - 阶段 2: 1-2 天（完善功能）
-  - 阶段 3: 1-2 天（高级功能，可选）
+  - 阶段 1: 6-8 小时（最小可运行版本）
+  - 阶段 2: 4-6 小时（完善功能）
+  - 阶段 3: 可选（高级功能）
+
+## 🚀 最小可运行实现（MVP）
+
+基于 PTX VM 现有的 `HostAPI`，最小实现只需：
+
+### 必需功能（约 6-8 小时）
+1. **CMake 集成** (30分钟)
+   - 链接 PTX VM 的 HostAPI
+   - 包含必要的头文件
+   
+2. **内存管理** (1小时) - 3个函数
+   - `cudaMalloc()` → 调用 `HostAPI::cuMemAlloc()`
+   - `cudaFree()` → 调用 `HostAPI::cuMemFree()`
+   - `cudaMemcpy()` → 调用 `HostAPI::cuMemcpyHtoD/DtoH()`
+   
+3. **内核注册** (1小时) - 2个函数
+   - `__cudaRegisterFatBinary()` - 简化版本（暂不解析）
+   - `__cudaRegisterFunction()` - 建立 host指针→内核名映射
+   
+4. **内核启动** (2小时) - 1个关键函数
+   - `cudaLaunchKernel()` → 调用 `HostAPI::cuLaunchKernel()`
+   - 需要先通过 `HostAPI::loadProgram()` 加载 PTX 文件
+   
+5. **测试调试** (2-3小时)
+   - 手动提取 PTX：`clang++ --cuda-device-only -S -o xx.ptx`
+   - 运行 simple_add 示例
+   - 调试参数传递和内存操作
+
+### 简化方案
+- ❌ **暂不实现** Fat Binary 自动解析（太复杂）
+- ✅ **改用** 手动提供 PTX 文件或环境变量指定
+- ❌ **暂不支持** <<<>>> 语法（可直接用 cudaLaunchKernel）
+- ❌ **暂不支持** Stream 和 Event
+
+参见：`IMPLEMENTATION_QUICKSTART.md` 获取详细实现步骤
 
 ## 关键里程碑
 
