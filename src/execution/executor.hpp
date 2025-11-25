@@ -161,6 +161,18 @@ public:
     
     // Get the loaded PTX program structure
     const PTXProgram& getProgram() const;
+    
+    // ========================================================================
+    // Grid/Block dimension configuration for kernel launch
+    // ========================================================================
+    
+    // Set grid and block dimensions (called before execute())
+    void setGridDimensions(unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ,
+                          unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ);
+    
+    // Get current grid/block configuration
+    void getGridDimensions(unsigned int& gridDimX, unsigned int& gridDimY, unsigned int& gridDimZ,
+                          unsigned int& blockDimX, unsigned int& blockDimY, unsigned int& blockDimZ) const;
 
 private:
     // Private implementation details

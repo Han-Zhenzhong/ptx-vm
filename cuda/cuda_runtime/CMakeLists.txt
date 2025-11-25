@@ -9,6 +9,33 @@ project(ptxrt VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Find PTX VM include and library paths
+set(PTXVM_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../include)
+set(PTXVM_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
+set(PTXVM_BUILD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../build)
+
+# Include directories for PTX VM
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${PTXVM_INCLUDE_DIR}
+    ${PTXVM_SRC_DIR}
+)
+
+# Link directories for PTX VM
+link_directories(
+    ${PTXVM_BUILD_DIR}
+    ${PTXVM_BUILD_DIR}/src/host
+    ${PTXVM_BUILD_DIR}/src/core
+    ${PTXVM_BUILD_DIR}/src/logger
+    ${PTXVM_BUILD_DIR}/src/decoder
+    ${PTXVM_BUILD_DIR}/src/execution
+    ${PTXVM_BUILD_DIR}/src/memory
+    ${PTXVM_BUILD_DIR}/src/optimizer
+    ${PTXVM_BUILD_DIR}/src/debugger
+    ${PTXVM_BUILD_DIR}/src/parser
+    ${PTXVM_BUILD_DIR}/src/registers
+)
+
 # Source files
 set(PTXRT_SOURCES
     cuda_runtime.cpp
@@ -23,25 +50,54 @@ set(PTXRT_HEADERS
 add_library(ptxrt_static STATIC ${PTXRT_SOURCES})
 target_include_directories(ptxrt_static PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${PTXVM_INCLUDE_DIR}
+)
+target_link_libraries(ptxrt_static PUBLIC
+    host
+    core
+    logger
+    decoder
+    execution
+    memory
+    optimizer
+    debugger
+    parser
+    registers
 )
 set_target_properties(ptxrt_static PROPERTIES
     OUTPUT_NAME ptxrt
     POSITION_INDEPENDENT_CODE ON
 )
 
+# Note: Shared library disabled because PTX VM libraries are not compiled with -fPIC
+# To enable shared library, PTX VM must be rebuilt with CMAKE_POSITION_INDEPENDENT_CODE=ON
+
 # Create shared library
-add_library(ptxrt_shared SHARED ${PTXRT_SOURCES})
-target_include_directories(ptxrt_shared PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
-set_target_properties(ptxrt_shared PROPERTIES
-    OUTPUT_NAME ptxrt
-    VERSION ${PROJECT_VERSION}
-    SOVERSION 1
-)
+# add_library(ptxrt_shared SHARED ${PTXRT_SOURCES})
+# target_include_directories(ptxrt_shared PUBLIC
+#     ${CMAKE_CURRENT_SOURCE_DIR}
+#     ${PTXVM_INCLUDE_DIR}
+# )
+# target_link_libraries(ptxrt_shared PUBLIC
+#     host
+#     core
+#     logger
+#     decoder
+#     execution
+#     memory
+#     optimizer
+#     debugger
+#     parser
+#     registers
+# )
+# set_target_properties(ptxrt_shared PROPERTIES
+#     OUTPUT_NAME ptxrt
+#     VERSION ${PROJECT_VERSION}
+#     SOVERSION 1
+# )
 
 # Installation rules
-install(TARGETS ptxrt_static ptxrt_shared
+install(TARGETS ptxrt_static
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION bin
@@ -49,27 +105,6 @@ install(TARGETS ptxrt_static ptxrt_shared
 
 install(FILES ${PTXRT_HEADERS}
     DESTINATION include/ptxrt
-)
-
-# Create a CMake config file for easy integration
-include(CMakePackageConfigHelper)
-
-configure_package_config_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/ptxrtConfig.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/ptxrtConfig.cmake
-    INSTALL_DESTINATION lib/cmake/ptxrt
-)
-
-write_basic_package_version_file(
-    ${CMAKE_CURRENT_BINARY_DIR}/ptxrtConfigVersion.cmake
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/ptxrtConfig.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/ptxrtConfigVersion.cmake
-    DESTINATION lib/cmake/ptxrt
 )
 
 # Print build information

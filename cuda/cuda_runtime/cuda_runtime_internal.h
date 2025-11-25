@@ -10,6 +10,7 @@
 #define CUDA_RUNTIME_INTERNAL_H
 
 #include "cuda_runtime.h"
+#include "host_api.hpp"
 #include <map>
 #include <string>
 #include <vector>
@@ -74,14 +75,24 @@ struct LaunchConfig {
  */
 class RuntimeState {
 public:
+    // HostAPI instance
+    HostAPI host_api;
+    
     // Fat binary management
     std::map<void**, FatBinaryInfo> fat_binaries;
+    
+    // Kernel mapping: host function pointer → kernel info
+    std::map<const void*, KernelInfo> kernel_map;
     
     // Memory management
     std::map<void*, DeviceMemory> device_memory;
     
     // Kernel launch configuration (for <<<>>> syntax)
     LaunchConfig* current_launch_config;
+    
+    // PTX program state
+    std::string ptx_file_path;
+    bool program_loaded;
     
     // Error state
     cudaError_t last_error;
@@ -92,10 +103,15 @@ public:
     
     RuntimeState() 
         : current_launch_config(nullptr)
+        , program_loaded(false)
         , last_error(cudaSuccess)
         , current_device(0)
         , device_count(1) 
-    {}
+    {
+        // Initialize HostAPI
+        host_api.initialize();
+        host_api.cuInit(0);
+    }
     
     ~RuntimeState() {
         // Cleanup

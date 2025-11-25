@@ -14,6 +14,8 @@ typedef enum {
     cudaErrorInvalidValue = 1,
     cudaErrorMemoryAllocation = 2,
     cudaErrorInitializationError = 3,
+    cudaErrorLaunchFailure = 4,
+    cudaErrorInvalidSource = 10,
     cudaErrorInvalidMemcpyDirection = 21,
     cudaErrorUnknown = 999
 } cudaError_t;
@@ -34,6 +36,23 @@ struct dim3 {
     dim3(unsigned int x_ = 1, unsigned int y_ = 1, unsigned int z_ = 1) 
         : x(x_), y(y_), z(z_) {}
 #endif
+};
+
+// CUDA vector types
+struct uint3 {
+    unsigned int x, y, z;
+};
+
+struct int3 {
+    int x, y, z;
+};
+
+struct float3 {
+    float x, y, z;
+};
+
+struct double3 {
+    double x, y, z;
 };
 
 // Opaque handle types
@@ -181,14 +200,6 @@ cudaError_t cudaEventSynchronize(cudaEvent_t event);
 
 // Calculate elapsed time between events
 cudaError_t cudaEventElapsedTime(float* ms, cudaEvent_t start, cudaEvent_t end);
-
-/**
- * @brief Helper types for registration
- */
-
-typedef struct uint3 {
-    unsigned int x, y, z;
-} uint3;
 
 #ifdef __cplusplus
 }

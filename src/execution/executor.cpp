@@ -9,16 +9,19 @@
 #include "predicate_handler.hpp"  // Predicate handler header
 #include "reconvergence_mechanism.hpp"  // Reconvergence mechanism header
 #include "memory/memory.hpp"  // Memory subsystem and MemorySpace
+#include "logger.hpp"  // Logger for debugging
 
 // Private implementation class
 class PTXExecutor::Impl {
 public:
-    Impl() : m_registerBank(nullptr), m_memorySubsystem(nullptr), m_performanceCounters(nullptr) {
+    Impl() : m_registerBank(nullptr), m_memorySubsystem(nullptr), m_performanceCounters(nullptr),
+             m_gridDimX(1), m_gridDimY(1), m_gridDimZ(1),
+             m_blockDimX(1), m_blockDimY(1), m_blockDimZ(1) {
         // Note: RegisterBank and MemorySubsystem will be set via setComponents()
         // They are owned externally (by PTXVM)
         
-        // Initialize warp scheduler with single warp for now
-        // TODO: Support multiple warps with per-thread register files
+        // Initialize warp scheduler with single warp by default
+        // Will be reconfigured in setGridDimensions() before kernel launch
         m_warpScheduler = std::make_unique<WarpScheduler>(1, 32);
         if (!m_warpScheduler->initialize()) {
             throw std::runtime_error("Failed to initialize warp scheduler");
@@ -116,6 +119,37 @@ public:
                 const DecodedInstruction& instr = m_decodedInstructions[issueInfo.instructionIndex];
                 bool shouldExecute = m_predicateHandler->shouldExecute(instr);
                 if (shouldExecute) {
+                    // ✅ Set thread context for this warp
+                    // Calculate global thread ID from warp ID
+                    // Each warp has 32 threads: thread_base = warpId * 32
+                    uint32_t threadBase = warpId * 32;
+                    
+                    // For SIMT, all threads in warp execute together
+                    // We use thread 0 in the warp as representative
+                    // TODO: Execute for each active thread in mask
+                    uint32_t globalThreadId = threadBase;
+                    
+                    // Calculate thread coordinates (x, y, z)
+                    uint32_t threadsPerBlock = m_blockDimX * m_blockDimY * m_blockDimZ;
+                    uint32_t blockId = globalThreadId / threadsPerBlock;
+                    uint32_t threadInBlock = globalThreadId % threadsPerBlock;
+                    
+                    uint32_t tid_x = threadInBlock % m_blockDimX;
+                    uint32_t tid_y = (threadInBlock / m_blockDimX) % m_blockDimY;
+                    uint32_t tid_z = threadInBlock / (m_blockDimX * m_blockDimY);
+                    
+                    uint32_t ctaid_x = blockId % m_gridDimX;
+                    uint32_t ctaid_y = (blockId / m_gridDimX) % m_gridDimY;
+                    uint32_t ctaid_z = blockId / (m_gridDimX * m_gridDimY);
+                    
+                    // Set special registers for this thread
+                    m_registerBank->setThreadId(tid_x, tid_y, tid_z);
+                    m_registerBank->setBlockId(ctaid_x, ctaid_y, ctaid_z);
+                    m_registerBank->setThreadDimensions(m_blockDimX, m_blockDimY, m_blockDimZ);
+                    m_registerBank->setGridDimensions(m_gridDimX, m_gridDimY, m_gridDimZ);
+                    m_registerBank->setWarpSize(32);
+                    m_registerBank->setLaneId(0); // First thread in warp as representative
+                    
                     // ✅ Set m_currentInstructionIndex to current PC before execution
                     // This is needed for instructions that modify it (branch, call, ret)
                     m_currentInstructionIndex = issueInfo.instructionIndex;
@@ -2407,6 +2441,14 @@ public:
     uint32_t m_currentCtaId = 0;
     uint32_t m_currentGridId = 0;
     
+    // Grid and block dimensions for kernel launch
+    unsigned int m_gridDimX = 1;
+    unsigned int m_gridDimY = 1;
+    unsigned int m_gridDimZ = 1;
+    unsigned int m_blockDimX = 1;
+    unsigned int m_blockDimY = 1;
+    unsigned int m_blockDimZ = 1;
+    
     // Divergence handling
     DivergenceStack m_divergenceStack;
     size_t m_divergenceStartCycle = 0;
@@ -2559,4 +2601,58 @@ size_t PTXExecutor::getCallStackDepth() const {
 
 const PTXProgram& PTXExecutor::getProgram() const {
     return pImpl->m_program;
+}
+
+// ============================================================================
+// Grid/Block dimension configuration
+// ============================================================================
+
+void PTXExecutor::setGridDimensions(unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ,
+                                    unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ) {
+    // Store dimensions
+    pImpl->m_gridDimX = gridDimX;
+    pImpl->m_gridDimY = gridDimY;
+    pImpl->m_gridDimZ = gridDimZ;
+    pImpl->m_blockDimX = blockDimX;
+    pImpl->m_blockDimY = blockDimY;
+    pImpl->m_blockDimZ = blockDimZ;
+    
+    // Calculate total number of threads
+    unsigned int totalThreads = gridDimX * gridDimY * gridDimZ * 
+                                blockDimX * blockDimY * blockDimZ;
+    
+    // Calculate number of warps (32 threads per warp, round up)
+    unsigned int numWarps = (totalThreads + 31) / 32;
+    
+    // Limit to reasonable maximum (to prevent excessive memory usage)
+    const unsigned int MAX_WARPS = 1024; // 32,768 threads max
+    if (numWarps > MAX_WARPS) {
+        std::cerr << "Warning: Requested " << numWarps << " warps (" << totalThreads 
+                  << " threads), limiting to " << MAX_WARPS << " warps" << std::endl;
+        numWarps = MAX_WARPS;
+    }
+    
+    Logger::debug("Configuring WarpScheduler: " + std::to_string(numWarps) + 
+                  " warps (" + std::to_string(totalThreads) + " threads total)");
+    Logger::debug("Grid: " + std::to_string(gridDimX) + "x" + std::to_string(gridDimY) + 
+                  "x" + std::to_string(gridDimZ));
+    Logger::debug("Block: " + std::to_string(blockDimX) + "x" + std::to_string(blockDimY) + 
+                  "x" + std::to_string(blockDimZ));
+    
+    // Recreate warp scheduler with correct number of warps
+    pImpl->m_warpScheduler = std::make_unique<WarpScheduler>(numWarps, 32);
+    if (!pImpl->m_warpScheduler->initialize()) {
+        throw std::runtime_error("Failed to initialize warp scheduler with " + 
+                               std::to_string(numWarps) + " warps");
+    }
+}
+
+void PTXExecutor::getGridDimensions(unsigned int& gridDimX, unsigned int& gridDimY, unsigned int& gridDimZ,
+                                    unsigned int& blockDimX, unsigned int& blockDimY, unsigned int& blockDimZ) const {
+    gridDimX = pImpl->m_gridDimX;
+    gridDimY = pImpl->m_gridDimY;
+    gridDimZ = pImpl->m_gridDimZ;
+    blockDimX = pImpl->m_blockDimX;
+    blockDimY = pImpl->m_blockDimY;
+    blockDimZ = pImpl->m_blockDimZ;
 }

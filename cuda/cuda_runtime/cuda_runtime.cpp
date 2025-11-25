@@ -1,6 +1,9 @@
 #include "cuda_runtime.h"
+#include "cuda_runtime_internal.h"
+#include "host_api.hpp"
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 
 // Global error state
 static cudaError_t g_lastError = cudaSuccess;
@@ -24,24 +27,82 @@ extern "C" {
  */
 
 cudaError_t cudaMalloc(void** devPtr, size_t size) {
-    // TODO: Implement device memory allocation
-    (void)devPtr;
-    (void)size;
+    auto& state = ptxrt::internal::RuntimeState::getInstance();
+    CUdeviceptr ptr;
+    
+    CUresult result = state.host_api.cuMemAlloc(&ptr, size);
+    if (result != CUDA_SUCCESS) {
+        state.last_error = cudaErrorMemoryAllocation;
+        return cudaErrorMemoryAllocation;
+    }
+    
+    *devPtr = reinterpret_cast<void*>(ptr);
+    
+    // Track allocation
+    ptxrt::internal::DeviceMemory mem;
+    mem.host_ptr = *devPtr;
+    mem.size = size;
+    mem.is_freed = false;
+    state.device_memory[*devPtr] = mem;
+    
     return cudaSuccess;
 }
 
 cudaError_t cudaFree(void* devPtr) {
-    // TODO: Implement device memory deallocation
-    (void)devPtr;
+    if (!devPtr) {
+        return cudaSuccess;
+    }
+    
+    auto& state = ptxrt::internal::RuntimeState::getInstance();
+    CUdeviceptr ptr = reinterpret_cast<CUdeviceptr>(devPtr);
+    
+    CUresult result = state.host_api.cuMemFree(ptr);
+    
+    // Remove from tracking
+    state.device_memory.erase(devPtr);
+    
+    if (result != CUDA_SUCCESS) {
+        state.last_error = cudaErrorUnknown;
+        return cudaErrorUnknown;
+    }
+    
     return cudaSuccess;
 }
 
 cudaError_t cudaMemcpy(void* dst, const void* src, size_t count, enum cudaMemcpyKind kind) {
-    // TODO: Implement memory copy between host and device
-    (void)dst;
-    (void)src;
-    (void)count;
-    (void)kind;
+    auto& state = ptxrt::internal::RuntimeState::getInstance();
+    CUresult result;
+    
+    switch (kind) {
+        case cudaMemcpyHostToDevice:
+            result = state.host_api.cuMemcpyHtoD(
+                reinterpret_cast<CUdeviceptr>(dst), src, count);
+            break;
+            
+        case cudaMemcpyDeviceToHost:
+            result = state.host_api.cuMemcpyDtoH(
+                dst, reinterpret_cast<CUdeviceptr>(src), count);
+            break;
+            
+        case cudaMemcpyDeviceToDevice:
+            // Not yet supported
+            state.last_error = cudaErrorInvalidMemcpyDirection;
+            return cudaErrorInvalidMemcpyDirection;
+            
+        case cudaMemcpyHostToHost:
+            memcpy(dst, src, count);
+            return cudaSuccess;
+            
+        default:
+            state.last_error = cudaErrorInvalidMemcpyDirection;
+            return cudaErrorInvalidMemcpyDirection;
+    }
+    
+    if (result != CUDA_SUCCESS) {
+        state.last_error = cudaErrorUnknown;
+        return cudaErrorUnknown;
+    }
+    
     return cudaSuccess;
 }
 
@@ -115,39 +176,142 @@ cudaError_t cudaPeekAtLastError(void) {
  * @brief Kernel launch functions
  */
 
+// Thread-local storage for <<<>>> syntax
+static thread_local ptxrt::internal::LaunchConfig* g_current_config = nullptr;
+
 cudaError_t cudaLaunchKernel(const void* func, dim3 gridDim, dim3 blockDim,
                              void** args, size_t sharedMem, cudaStream_t stream) {
-    // TODO: Implement kernel launch via PTX VM
-    (void)func;
-    (void)gridDim;
-    (void)blockDim;
-    (void)args;
-    (void)sharedMem;
+    auto& state = ptxrt::internal::RuntimeState::getInstance();
+    
+    // 1. Find kernel info
+    auto it = state.kernel_map.find(func);
+    if (it == state.kernel_map.end()) {
+        fprintf(stderr, "[libptxrt] ERROR: Kernel not found for function %p\n", func);
+        state.last_error = cudaErrorInvalidValue;
+        return cudaErrorInvalidValue;
+    }
+    
+    const ptxrt::internal::KernelInfo& kernel = it->second;
+    printf("[libptxrt] Launching kernel: %s\n", kernel.kernel_name.c_str());
+    printf("[libptxrt] Grid: (%u,%u,%u) Block: (%u,%u,%u)\n",
+           gridDim.x, gridDim.y, gridDim.z,
+           blockDim.x, blockDim.y, blockDim.z);
+    
+    // 2. Load PTX program (first time only)
+    if (!state.program_loaded) {
+        // Get PTX path from environment variable
+        const char* ptx_path = getenv("PTXRT_PTX_PATH");
+        if (!ptx_path) {
+            // Try default: kernel_name.ptx
+            state.ptx_file_path = kernel.kernel_name + ".ptx";
+        } else {
+            state.ptx_file_path = ptx_path;
+        }
+        
+        printf("[libptxrt] Loading PTX: %s\n", state.ptx_file_path.c_str());
+        
+        if (!state.host_api.loadProgram(state.ptx_file_path)) {
+            fprintf(stderr, "[libptxrt] ERROR: Failed to load PTX from %s\n", 
+                    state.ptx_file_path.c_str());
+            state.last_error = cudaErrorInvalidSource;
+            return cudaErrorInvalidSource;
+        }
+        
+        state.program_loaded = true;
+        printf("[libptxrt] PTX loaded successfully\n");
+    }
+    
+    // 3. Launch kernel via HostAPI
+    // Note: CUfunction is uint32_t, we use 0 for now
+    // The actual kernel will be found by name in the loaded PTX
+    CUfunction f = 0;
+    
+    CUresult result = state.host_api.cuLaunchKernel(
+        f,
+        gridDim.x, gridDim.y, gridDim.z,
+        blockDim.x, blockDim.y, blockDim.z,
+        sharedMem,
+        nullptr,  // stream
+        args,
+        nullptr   // extra
+    );
+    
+    if (result != CUDA_SUCCESS) {
+        fprintf(stderr, "[libptxrt] ERROR: Kernel launch failed with code %d\n", result);
+        state.last_error = cudaErrorLaunchFailure;
+        return cudaErrorLaunchFailure;
+    }
+    
+    printf("[libptxrt] Kernel launched successfully\n");
+    
     (void)stream;
     return cudaSuccess;
 }
 
 cudaError_t cudaConfigureCall(dim3 gridDim, dim3 blockDim, size_t sharedMem, cudaStream_t stream) {
-    // TODO: Implement configure call for <<<>>> syntax
-    (void)gridDim;
-    (void)blockDim;
-    (void)sharedMem;
-    (void)stream;
+    // Create or reset configuration
+    if (!g_current_config) {
+        g_current_config = new ptxrt::internal::LaunchConfig();
+    } else {
+        g_current_config->args.clear();
+        g_current_config->arg_sizes.clear();
+    }
+    
+    g_current_config->grid_dim = gridDim;
+    g_current_config->block_dim = blockDim;
+    g_current_config->shared_mem = sharedMem;
+    g_current_config->stream = stream;
+    
     return cudaSuccess;
 }
 
 cudaError_t cudaSetupArgument(const void* arg, size_t size, size_t offset) {
-    // TODO: Implement setup kernel argument
-    (void)arg;
-    (void)size;
-    (void)offset;
+    if (!g_current_config) {
+        fprintf(stderr, "[libptxrt] ERROR: cudaSetupArgument called without cudaConfigureCall\n");
+        return cudaErrorInvalidValue;
+    }
+    
+    // Copy argument data
+    void* arg_copy = malloc(size);
+    if (!arg_copy) {
+        return cudaErrorMemoryAllocation;
+    }
+    memcpy(arg_copy, arg, size);
+    
+    g_current_config->args.push_back(arg_copy);
+    g_current_config->arg_sizes.push_back(size);
+    
+    (void)offset;  // Offset is implicit from order
     return cudaSuccess;
 }
 
 cudaError_t cudaLaunch(const void* func) {
-    // TODO: Implement kernel launch after configuration
-    (void)func;
-    return cudaSuccess;
+    if (!g_current_config) {
+        fprintf(stderr, "[libptxrt] ERROR: cudaLaunch called without configuration\n");
+        return cudaErrorInvalidValue;
+    }
+    
+    // Prepare argument array
+    void** args = g_current_config->args.empty() ? nullptr : g_current_config->args.data();
+    
+    // Call cudaLaunchKernel
+    cudaError_t result = cudaLaunchKernel(
+        func,
+        g_current_config->grid_dim,
+        g_current_config->block_dim,
+        args,
+        g_current_config->shared_mem,
+        g_current_config->stream
+    );
+    
+    // Clean up argument copies
+    for (void* arg : g_current_config->args) {
+        free(arg);
+    }
+    g_current_config->args.clear();
+    g_current_config->arg_sizes.clear();
+    
+    return result;
 }
 
 /**
@@ -155,20 +319,20 @@ cudaError_t cudaLaunch(const void* func) {
  */
 
 void** __cudaRegisterFatBinary(void* fatCubin) {
-    // TODO: Implement fat binary registration and PTX extraction
-    // This function should:
-    // 1. Parse the .nv_fatbin section
-    // 2. Extract PTX code
-    // 3. Store PTX for later kernel launch
-    (void)fatCubin;
+    // Simplified version: don't parse fat binary
+    // User should provide PTX file via PTXRT_PTX_PATH environment variable
     
-    // Return a dummy handle for now
-    static void* handle = nullptr;
+    static void* handle = malloc(8);
+    
+    printf("[libptxrt] Fat binary registered at %p\n", fatCubin);
+    printf("[libptxrt] NOTE: Please set PTX file via PTXRT_PTX_PATH environment variable\n");
+    
     return &handle;
 }
 
 void __cudaUnregisterFatBinary(void** fatCubinHandle) {
-    // TODO: Implement fat binary unregistration
+    // TODO: Implement fat binary unregistration and cleanup
+    printf("[libptxrt] Fat binary unregistered\n");
     (void)fatCubinHandle;
 }
 
@@ -182,15 +346,20 @@ void __cudaRegisterFunction(void** fatCubinHandle,
                            dim3* bDim,
                            dim3* gDim,
                            int* wSize) {
-    // TODO: Implement function registration
-    // This function should:
-    // 1. Map host function pointer to kernel name
-    // 2. Store mapping for kernel launch
+    auto& state = ptxrt::internal::RuntimeState::getInstance();
+    
+    ptxrt::internal::KernelInfo info;
+    info.kernel_name = deviceName;
+    info.host_func = (const void*)hostFun;
+    info.thread_limit = thread_limit;
+    info.ptx_code = nullptr;  // Will be set when PTX is loaded
+    
+    state.kernel_map[(const void*)hostFun] = info;
+    
+    printf("[libptxrt] Kernel registered: %s at %p\n", deviceName, hostFun);
+    
     (void)fatCubinHandle;
-    (void)hostFun;
     (void)deviceFun;
-    (void)deviceName;
-    (void)thread_limit;
     (void)tid;
     (void)bid;
     (void)bDim;

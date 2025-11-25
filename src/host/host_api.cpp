@@ -157,6 +157,11 @@ public:
 
             PTXExecutor& executor = m_vm->getExecutor();
             
+            // ✅ Configure grid/block dimensions before parameter setup
+            Logger::debug("Configuring grid/block dimensions...");
+            executor.setGridDimensions(gridDimX, gridDimY, gridDimZ,
+                                      blockDimX, blockDimY, blockDimZ);
+            
             // 🔧 修复：将 kernelParams 复制到参数内存
             if (kernelParams != nullptr && executor.hasProgramStructure()) {
                 const PTXProgram& program = executor.getProgram();
@@ -194,8 +199,8 @@ public:
                 }
             }
 
-            // 设置grid/block维度
-            // TODO: 传递给 warp scheduler
+            // Grid/block dimensions already configured via setGridDimensions() above
+            Logger::debug("Starting kernel execution...");
 
             // 执行内核
             bool success = m_vm->run();
