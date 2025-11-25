@@ -201,6 +201,16 @@ cudaError_t cudaEventSynchronize(cudaEvent_t event);
 // Calculate elapsed time between events
 cudaError_t cudaEventElapsedTime(float* ms, cudaEvent_t start, cudaEvent_t end);
 
+/**
+ * @brief CUDA kernel configuration push/pop (used by <<<>>> syntax)
+ */
+
+// Push kernel configuration (returns 0 on success, 1 on failure)
+unsigned __cudaPushCallConfiguration(dim3 gridDim, dim3 blockDim, size_t sharedMem, void* stream);
+
+// Pop kernel configuration
+cudaError_t __cudaPopCallConfiguration(dim3 *gridDim, dim3 *blockDim, size_t *sharedMem, void **stream);
+
 #ifdef __cplusplus
 }
 #endif

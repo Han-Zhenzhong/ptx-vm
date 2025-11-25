@@ -34,9 +34,9 @@ int main(void) {
     
     // Allocate device memory
     float *d_a, *d_b, *d_c;
-    cudaMalloc(&d_a, bytes);
-    cudaMalloc(&d_b, bytes);
-    cudaMalloc(&d_c, bytes);
+    cudaMalloc((void**)&d_a, bytes);
+    cudaMalloc((void**)&d_b, bytes);
+    cudaMalloc((void**)&d_c, bytes);
     
     // Copy data to device
     cudaMemcpy(d_a, h_a, bytes, cudaMemcpyHostToDevice);

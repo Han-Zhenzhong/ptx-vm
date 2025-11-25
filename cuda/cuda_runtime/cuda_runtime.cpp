@@ -183,16 +183,19 @@ cudaError_t cudaLaunchKernel(const void* func, dim3 gridDim, dim3 blockDim,
                              void** args, size_t sharedMem, cudaStream_t stream) {
     auto& state = ptxrt::internal::RuntimeState::getInstance();
     
-    // 1. Find kernel info
+    // 1. Find kernel info (if registered via nvcc)
+    std::string kernel_name;
     auto it = state.kernel_map.find(func);
-    if (it == state.kernel_map.end()) {
-        fprintf(stderr, "[libptxrt] ERROR: Kernel not found for function %p\n", func);
-        state.last_error = cudaErrorInvalidValue;
-        return cudaErrorInvalidValue;
+    if (it != state.kernel_map.end()) {
+        kernel_name = it->second.kernel_name;
+        printf("[libptxrt] Launching registered kernel: %s\n", kernel_name.c_str());
+    } else {
+        // For clang-compiled code, kernel is not registered
+        // We'll load PTX and use the first kernel found
+        printf("[libptxrt] Kernel not registered (clang mode), will use PTX entry point\n");
+        kernel_name = "";  // Will be determined from PTX
     }
     
-    const ptxrt::internal::KernelInfo& kernel = it->second;
-    printf("[libptxrt] Launching kernel: %s\n", kernel.kernel_name.c_str());
     printf("[libptxrt] Grid: (%u,%u,%u) Block: (%u,%u,%u)\n",
            gridDim.x, gridDim.y, gridDim.z,
            blockDim.x, blockDim.y, blockDim.z);
@@ -202,12 +205,13 @@ cudaError_t cudaLaunchKernel(const void* func, dim3 gridDim, dim3 blockDim,
         // Get PTX path from environment variable
         const char* ptx_path = getenv("PTXRT_PTX_PATH");
         if (!ptx_path) {
-            // Try default: kernel_name.ptx
-            state.ptx_file_path = kernel.kernel_name + ".ptx";
-        } else {
-            state.ptx_file_path = ptx_path;
+            fprintf(stderr, "[libptxrt] ERROR: PTXRT_PTX_PATH environment variable not set\n");
+            fprintf(stderr, "[libptxrt] Please set it to point to your .ptx file\n");
+            state.last_error = cudaErrorInvalidSource;
+            return cudaErrorInvalidSource;
         }
         
+        state.ptx_file_path = ptx_path;
         printf("[libptxrt] Loading PTX: %s\n", state.ptx_file_path.c_str());
         
         if (!state.host_api.loadProgram(state.ptx_file_path)) {
@@ -464,6 +468,29 @@ cudaError_t cudaEventElapsedTime(float* ms, cudaEvent_t start, cudaEvent_t end) 
     if (ms) {
         *ms = 0.0f;
     }
+    return cudaSuccess;
+}
+
+/**
+ * @brief CUDA kernel configuration push/pop functions (used by <<<>>> syntax)
+ */
+
+// These functions are called by compiler-generated code for <<<>>> syntax
+unsigned __cudaPushCallConfiguration(dim3 gridDim, dim3 blockDim, size_t sharedMem, void* stream) {
+    cudaError_t err = cudaConfigureCall(gridDim, blockDim, sharedMem, (cudaStream_t)stream);
+    return (err == cudaSuccess) ? 0 : 1;
+}
+
+cudaError_t __cudaPopCallConfiguration(dim3 *gridDim, dim3 *blockDim, size_t *sharedMem, void **stream) {
+    if (!g_current_config) {
+        return cudaErrorInvalidValue;
+    }
+    
+    if (gridDim) *gridDim = g_current_config->grid_dim;
+    if (blockDim) *blockDim = g_current_config->block_dim;
+    if (sharedMem) *sharedMem = g_current_config->shared_mem;
+    if (stream) *stream = g_current_config->stream;
+    
     return cudaSuccess;
 }
 

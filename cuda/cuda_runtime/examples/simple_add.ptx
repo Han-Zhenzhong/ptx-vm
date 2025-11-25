@@ -3,7 +3,7 @@
 //
 
 .version 8.3
-.target sm_61
+.target sm_70
 .address_size 64
 
 	// .globl	_Z9vectorAddPKfS0_Pfi   // -- Begin function _Z9vectorAddPKfS0_Pfi
