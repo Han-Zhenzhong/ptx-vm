@@ -233,5 +233,5 @@ Default level: info
 ## See Also
 
 - [API Documentation](api_documentation.md) - Full API reference
-- [CLI Interface Guide](cli_interface_guide.md) - CLI command reference
-- [Developer Guide](../dev_docs/developer_guide.md) - Development guidelines
+- [CLI Usage Guide](cli_usage_correction.md) - CLI command reference
+- [Developer Guide](../docs_dev/developer_guide.md) - Development guidelines

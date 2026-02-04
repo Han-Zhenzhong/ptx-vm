@@ -508,8 +508,8 @@ int32_t dst = static_cast<int32_t>(src);  // dst = 3 (not 4)
 ## 📚 相关文档
 
 - `docs/new_features_implementation_guide.md` - 实现指南（第 7、8 节已完成）
-- `docs/implementation_summary_phase1.md` - 第一阶段总结
-- `docs/implementation_summary_phase2.md` - 第二阶段总结
+- `docs_dev/archive/implementation_summary_phase1.md` - 第一阶段总结
+- `docs_dev/archive/implementation_summary_phase2.md` - 第二阶段总结
 - `docs/comprehensive_implementation_analysis.md` - 完整分析
 - `docs/quick_reference.md` - 快速参考
 

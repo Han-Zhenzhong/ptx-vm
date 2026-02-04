@@ -253,7 +253,7 @@ make parameter_passing_example
 - `examples/parameter_passing_example.ptx` - PTX 内核（无需更改）
 - `src/host/host_api.cpp` - Host API 实现
 - `include/host_api.hpp` - Host API 头文件
-- `dev_docs/implementation_summary_phase1.md` - 参数传递修复文档
+- `docs_dev/archive/implementation_summary_phase1.md` - 参数传递修复文档
 
 ## 测试场景
 

@@ -79,13 +79,13 @@ m_loader = std::make_unique<CudaBinaryLoader>();
 以下文档文件中仍然包含对 `cuda_binary_loader` 的引用，这些是文档性质的，保留用于历史参考：
 
 ### 规范文档
-- `spec_docs/cuda_binary_loader.md` - CUDA 二进制加载器的技术说明（保留作为参考）
-- `spec_docs/README.md` - 包含对文档的索引
-- `spec_docs/CMakeLists.txt` - 文档构建配置
+- `docs_spec/cuda_binary_loader.md` - CUDA 二进制加载器的技术说明（保留作为参考）
+- `docs_spec/README.md` - 包含对文档的索引
+- `docs_spec/CMakeLists.txt` - 文档构建配置
 
 ### 开发文档
-- `dev_docs/developer_guide.md` - 开发者指南中的架构说明
-- `dev_docs/host_api_loadprogram_refactoring.md` - 重构说明文档
+- `docs_dev/developer_guide.md` - 开发者指南中的架构说明
+- `docs_dev/host_api_loadprogram_refactoring.md` - 重构说明文档
 
 ### 项目文档
 - `README.md` - 项目主文档

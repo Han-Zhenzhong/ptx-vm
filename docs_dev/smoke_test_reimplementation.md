@@ -238,6 +238,6 @@ REGISTER_WRITES: 85
 
 ## 相关文档
 
-- [loadAndExecuteProgram 修复](./loadAndExecuteProgram_fix.md)
+- [loadAndExecuteProgram 修复](./archive/loadAndExecuteProgram_fix.md)
 - [开发者指南](./developer_guide.md)
 - [Smoke Test 介绍](../blog/smoke_test_introduction.md)

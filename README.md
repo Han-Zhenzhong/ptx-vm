@@ -42,15 +42,15 @@ The project is hosted on gitee at: https://gitee.com/hanzhenzhong/ptx-vm
 
 ### Documentation
 - 📚 **[完整文档索引](./DOCS_INDEX.md)** - 查看所有文档分类
-- 🚀 **[用户文档](./user_docs/)** - 使用指南、API 文档、示例代码
-- 🔧 **[开发文档](./dev_docs/)** - 开发者指南、实现总结、性能优化
-- 📖 **[规范文档](./spec_docs/)** - PTX 基础知识、SIMT 执行模型、技术规范
+- 🚀 **[用户文档](./docs_user/)** - 使用指南、API 文档、示例代码
+- 🔧 **[开发文档](./docs_dev/)** - 开发者指南、实现总结、性能优化
+- 📖 **[规范文档](./docs_spec/)** - PTX 基础知识、SIMT 执行模型、技术规范
 
 主要文档：
-- [用户指南](./user_docs/user_guide.md) - 快速开始使用 PTX VM
-- [开发者指南](./dev_docs/developer_guide.md) - 参与项目开发
-- [快速参考](./user_docs/quick_reference.md) - 常用命令速查
-- [API 文档](./user_docs/api_documentation.md) - 完整 API 参考
+- [用户指南](./docs_user/user_guide.md) - 快速开始使用 PTX VM
+- [开发者指南](./docs_dev/developer_guide.md) - 参与项目开发
+- [快速参考](./docs_user/quick_reference.md) - 常用命令速查
+- [API 文档](./docs_user/api_documentation.md) - 完整 API 参考
 
 ## Building the Project
 
@@ -186,11 +186,11 @@ Control the verbosity of VM output:
 - **error** - Shows errors only
 
 For more details, see:
-- 📖 [Complete User Guide](./user_docs/user_guide.md) - Detailed usage instructions
-- 📖 [中文用户指南](./user_docs/USER_GUIDE_CN.md) - Chinese user guide
-- 📖 [Quick Reference](./user_docs/quick_reference.md) - Command quick reference
-- 📖 [API Documentation](./user_docs/api_documentation.md) - API reference
-- 📖 [Logging System](./user_docs/logging_system.md) - Logging system details
+- 📖 [Complete User Guide](./docs_user/user_guide.md) - Detailed usage instructions
+- 📖 [中文用户指南](./docs_user/USER_GUIDE_CN.md) - Chinese user guide
+- 📖 [Quick Reference](./docs_user/quick_reference.md) - Command quick reference
+- 📖 [API Documentation](./docs_user/api_documentation.md) - API reference
+- 📖 [Logging System](./docs_user/logging_system.md) - Logging system details
 
 ## Command Reference
 
@@ -308,21 +308,17 @@ Exit the virtual machine.
 ```
 
 ## Documentation
-Comprehensive documentation is available in the `docs/` directory:
-- [User Guide](docs/user_guide.md) - For end-users and application developers
-- [Developer Guide](docs/developer_guide.md) - For contributors and developers
-- [API Documentation](docs/api_documentation.md) - For developers integrating with the VM
-- [Reconvergence Mechanism](docs/reconvergence_mechanism.md) - Technical details on divergence handling
-- [Memory Optimizations](docs/memory_optimizations.md) - Details on memory system implementation
-- [CUDA Binary Loader](docs/cuda_binary_loader.md) - Technical details on CUDA binary loading
-- [Performance Testing](docs/performance_testing.md) - Performance testing framework and results
-- [Warp Scheduler](docs/warp_scheduler.md) - Technical details on warp scheduling implementation
-- [Predicate Handler](docs/predicate_handler.md) - Technical details on predicate handling implementation
-- [Divergence Handling](docs/divergence_handling.md) - Technical details on divergence handling and reconvergence algorithms
-- [Memory Optimization Examples](docs/memory_optimization_examples.md) - Example programs for memory optimization testing
-- [Divergence Performance Testing](docs/divergence_performance_testing.md) - Performance testing framework for divergence handling
-- [Visualization Features](docs/visualization_features.md) - Details on visualization capabilities
-- [Next Phase Development Plan](docs/next_phase_development_plan.md) - Plans for future development
+Comprehensive documentation is available via [DOCS_INDEX.md](DOCS_INDEX.md) and organized into three directories:
+
+- [docs_user/](docs_user/) - End-user and API usage documentation
+- [docs_dev/](docs_dev/) - Contributor/developer documentation and technical reports
+- [docs_spec/](docs_spec/) - PTX/SIMT fundamentals and specification notes
+
+Recommended starting points:
+- [User Guide](docs_user/user_guide.md)
+- [Developer Guide](docs_dev/developer_guide.md)
+- [API Documentation](docs_user/api_documentation.md)
+- [Next Phase Development Plan](docs_dev/next_phase_development_plan.md)
 
 The documentation covers architecture, code structure, contribution guidelines, and technical details of implementation.
 

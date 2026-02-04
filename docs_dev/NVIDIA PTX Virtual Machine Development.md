@@ -61,4 +61,4 @@
 
 ## 10. Next Phase Development
 
-For the next phase of development, please refer to the detailed plan in [Next Phase Development Plan](docs/next_phase_development_plan.md). This plan focuses on enhancing parameter passing mechanisms, improving the execution interface, and expanding the VM's capabilities to more closely match real CUDA execution environments.
+For the next phase of development, please refer to the detailed plan in [Next Phase Development Plan](./next_phase_development_plan.md). This plan focuses on enhancing parameter passing mechanisms, improving the execution interface, and expanding the VM's capabilities to more closely match real CUDA execution environments.

@@ -366,9 +366,9 @@ atom.global.min.u32 %r3, [global_min], %r1;
 
 | 文件 | 类型 | 行数 | 内容 |
 |------|------|------|------|
-| `docs/implementation_summary_phase2.md` | 文档 | 600+ | 第2阶段总结 |
-| `docs/implementation_summary_phase3.md` | 文档 | 700+ | 第3阶段总结 |
-| `docs/implementation_summary_phase4.md` | 文档 | 600+ | 第4阶段总结 |
+| `docs_dev/archive/implementation_summary_phase2.md` | 文档 | 600+ | 第2阶段总结 |
+| `docs_dev/archive/implementation_summary_phase3.md` | 文档 | 700+ | 第3阶段总结 |
+| `docs_dev/archive/implementation_summary_phase4.md` | 文档 | 600+ | 第4阶段总结 |
 | `examples/selp_and_cvt_example.ptx` | 测试 | 300+ | SELP和CVT测试 |
 | `examples/comprehensive_test_suite.ptx` | 测试 | 600+ | 综合测试套件 |
 
@@ -625,13 +625,13 @@ make
 
 ```bash
 # 第2阶段文档（浮点和SETP）
-cat docs/implementation_summary_phase2.md
+cat docs_dev/archive/implementation_summary_phase2.md
 
 # 第3阶段文档（SELP和CVT）
-cat docs/implementation_summary_phase3.md
+cat docs_dev/archive/implementation_summary_phase3.md
 
 # 第4阶段文档（原子操作）
-cat docs/implementation_summary_phase4.md
+cat docs_dev/archive/implementation_summary_phase4.md
 ```
 
 ---

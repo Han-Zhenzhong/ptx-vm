@@ -1,18 +1,12 @@
 # Developer Guide for PTX Virtual Machine
 
-**Authors**:     ├── logger              # Logging module
-    │   ├── logger.cpp
-    │   └── CMakeLists.txt
-    └── host
-        ├── cli_interface.cpp
-        ├── cuda_binary_loader.cpp
-        └── host_api.cppZhenzhong, TongyiLingma, GitHub Copilot  
+**Authors**: Han-Zhenzhong, TongyiLingma, GitHub Copilot  
 **Last Updated**: 2025-10-29
 
 ## Introduction
 This document provides essential information for developers working on the PTX Virtual Machine project. It covers code structure, contribution guidelines, build instructions, and other important details to help new contributors get started.
 
-For information about future development plans, please refer to the [Next Phase Development Plan](docs/next_phase_development_plan.md).
+For information about future development plans, please refer to the [Next Phase Development Plan](./next_phase_development_plan.md).
 
 The PTX Virtual Machine project is hosted on gitee at: https://gitee.com/hanzhenzhong/ptx-vm
 
@@ -145,7 +139,7 @@ graph TD
   - `Logger::error()` - Failures, exceptions, critical errors
 - Include relevant context in log messages (addresses, names, values)
 - Avoid logging in performance-critical loops
-- See [Logging System Documentation](../user_docs/logging_system.md) for details
+- See [Logging System Documentation](../docs_user/logging_system.md) for details
 
 ### Git Commit Messages
 - Use conventional commits format:

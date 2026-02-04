@@ -30,7 +30,7 @@ We would like to thank the following individuals and organizations for their sup
 - Open source community for general support and inspiration
 
 ## How to Contribute
-If you're interested in contributing to the NVIDIA PTX Virtual Machine project, please see our [Developer Guide](docs/developer_guide.md) for information on:
+If you're interested in contributing to the NVIDIA PTX Virtual Machine project, please see our [Developer Guide](docs_dev/developer_guide.md) for information on:
 
 - Code structure and architecture
 - Contribution guidelines

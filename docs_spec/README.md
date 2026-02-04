@@ -60,8 +60,8 @@
 - [CUDA C 编程指南](https://docs.nvidia.com/cuda/cuda-c-programming-guide/)
 
 ### 项目文档
-- **用户文档**: `../user_docs/` - 如何使用 PTX VM
-- **开发文档**: `../dev_docs/` - 如何开发和扩展 PTX VM
+- **用户文档**: [../docs_user/](../docs_user/) - 如何使用 PTX VM
+- **开发文档**: [../docs_dev/](../docs_dev/) - 如何开发和扩展 PTX VM
 
 ## 📖 术语表
 

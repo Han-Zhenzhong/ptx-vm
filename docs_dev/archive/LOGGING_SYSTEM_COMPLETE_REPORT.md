@@ -557,16 +557,16 @@ make
 
 ### 9.1 用户文档
 - [README.md](../README.md) - 项目主文档
-- [用户指南](../user_docs/user_guide.md) - 详细使用说明
-- [快速参考](../user_docs/quick_reference.md) - 命令速查
-- [中文用户指南](../user_docs/USER_GUIDE_CN.md) - 中文文档
-- [API 文档](../user_docs/api_documentation.md) - API 参考
-- [日志系统文档](../user_docs/logging_system.md) - 日志系统专用文档
+- [用户指南](../docs_user/user_guide.md) - 详细使用说明
+- [快速参考](../docs_user/quick_reference.md) - 命令速查
+- [中文用户指南](../docs_user/USER_GUIDE_CN.md) - 中文文档
+- [API 文档](../docs_user/api_documentation.md) - API 参考
+- [日志系统文档](../docs_user/logging_system.md) - 日志系统专用文档
 
 ### 9.2 开发文档
 - [LOGGING_CODE_REVIEW.md](LOGGING_CODE_REVIEW.md) - 代码审查详情
 - [LOGGING_IMPLEMENTATION_SUMMARY.md](LOGGING_IMPLEMENTATION_SUMMARY.md) - 实现总结
-- [DOCUMENTATION_UPDATE_SUMMARY.md](../DOCUMENTATION_UPDATE_SUMMARY.md) - 文档更新总结
+- [DOCUMENTATION_UPDATE_SUMMARY.md](DOCUMENTATION_UPDATE_SUMMARY.md) - 文档更新总结
 
 ---
 

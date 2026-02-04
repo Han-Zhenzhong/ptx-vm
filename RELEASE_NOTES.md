@@ -107,10 +107,10 @@ make
 
 ## Documentation
 Comprehensive documentation is available in the `docs/` directory:
-- [User Guide](docs/user_guide.md) - For end-users and application developers
-- [Developer Guide](docs/developer_guide.md) - For contributors and developers
-- [API Documentation](docs/api_documentation.md) - For developers integrating with the VM
-- [Technical Documentation](docs/) - Detailed technical references for all components
+- [User Guide](docs_user/user_guide.md) - For end-users and application developers
+- [Developer Guide](docs_dev/developer_guide.md) - For contributors and developers
+- [API Documentation](docs_user/api_documentation.md) - For developers integrating with the VM
+- [Documentation Index](DOCS_INDEX.md) - Entry point for all documentation
 
 ## Known Issues
 - Limited support for advanced PTX instructions
@@ -126,7 +126,7 @@ Planned improvements for future releases:
 - Improved error handling and reporting
 
 ## Contributing
-We welcome contributions from the community. Please see the [Developer Guide](docs/developer_guide.md) for information on how to contribute to the project.
+We welcome contributions from the community. Please see the [Developer Guide](docs_dev/developer_guide.md) for information on how to contribute to the project.
 
 ## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

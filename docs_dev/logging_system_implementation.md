@@ -224,7 +224,7 @@ if (Logger::getLogLevel() <= LogLevel::DEBUG) {
 ## Documentation
 
 ### User Documentation
-- **[logging_system.md](../user_docs/logging_system.md)** - Complete user guide
+- **[logging_system.md](../docs_user/logging_system.md)** - Complete user guide
   - Log level descriptions
   - Configuration options
   - Command-line usage
@@ -238,7 +238,7 @@ if (Logger::getLogLevel() <= LogLevel::DEBUG) {
 ### Updated Files
 - `README.md` - Added logging section with quick reference
 - `DOCS_INDEX.md` - Added logging system to documentation index
-- `user_docs/README.md` - Added logging_system.md to file list
+- `docs_user/README.md` - Added logging_system.md to file list
 
 ## Future Enhancements
 

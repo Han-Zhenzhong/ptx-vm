@@ -195,8 +195,8 @@ mem.write<uint8_t>(MemorySpace::PARAMETER, 0x1000 + offset + j, paramData[j]);
 
 - [Parameter Passing Example 更新说明](./parameter_passing_example_update.md)
 - [实现总结 Phase 1](./implementation_summary_phase1.md)
-- [API 文档](../user_docs/api_documentation.md)
-- [用户指南](../user_docs/user_guide.md)
+- [API 文档](../docs_user/api_documentation.md)
+- [用户指南](../docs_user/user_guide.md)
 
 ### 代码示例
 

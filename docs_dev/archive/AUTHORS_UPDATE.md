@@ -1,7 +1,7 @@
 # 作者信息更新记录
 
-**更新日期**: 2025-10-29  
-**更新内容**: 为所有文档添加作者信息
+**更新日期**: 2025-10-29（原始记录），2026-02-04（路径与归档整理后更新本记录）  
+**更新内容**: 为主要文档添加作者信息；后续整理统一文档目录命名并归档历史开发文档
 
 ## 📋 更新概述
 
@@ -16,11 +16,11 @@
 
 | 目录 | 文档数量 | 说明 |
 |------|---------|------|
-| `dev_docs/` | 20 个 .md 文件 | 开发文档 |
-| `user_docs/` | 12 个 .md 文件 | 用户文档 |
-| `spec_docs/` | 6 个 .md 文件 | 规范文档 |
-| 根目录 | 3 个 .md 文件 | 索引和说明文档 |
-| **总计** | **41 个文档** | - |
+| `docs_dev/` | 18 个 .md 文件 + `archive/` 20 个 .md 文件 | 开发文档（含历史归档） |
+| `docs_user/` | 17 个 .md 文件 | 用户文档 |
+| `docs_spec/` | 8 个 .md 文件 | 规范文档 |
+| 根目录 | 7 个 .md 文件 | 项目级索引与说明文档 |
+| **总计** | **70 个文档** | 按当前目录结构统计（不含 build/ 等生成目录） |
 
 ## 📝 作者信息格式
 
@@ -39,18 +39,18 @@
 
 ## 📂 已更新的文档列表
 
-### 开发文档 (dev_docs/)
+### 开发文档 (docs_dev/)
 - ✅ README.md
 - ✅ developer_guide.md
-- ✅ complete_implementation_summary.md
+- ✅ archive/complete_implementation_summary.md
 - ✅ comprehensive_implementation_analysis.md
-- ✅ implementation_summary_phase1.md
-- ✅ implementation_summary_phase2.md
-- ✅ implementation_summary_phase3.md
-- ✅ implementation_summary_phase4.md
-- ✅ loadAndExecuteProgram_fix.md
-- ✅ multi_function_implementation_summary.md
-- ✅ param_auto_inference_implementation_summary.md
+- ✅ archive/implementation_summary_phase1.md
+- ✅ archive/implementation_summary_phase2.md
+- ✅ archive/implementation_summary_phase3.md
+- ✅ archive/implementation_summary_phase4.md
+- ✅ archive/loadAndExecuteProgram_fix.md
+- ✅ archive/multi_function_implementation_summary.md
+- ✅ archive/param_auto_inference_implementation_summary.md
 - ✅ new_features_implementation_guide.md
 - ✅ next_phase_development_plan.md
 - ✅ ptx_parser_complete_design.md
@@ -60,13 +60,15 @@
 - ✅ parser_improvements_needed.md
 - ✅ 其他开发文档...
 
-### 用户文档 (user_docs/)
+### 用户文档 (docs_user/)
 - ✅ README.md
 - ✅ user_guide.md (包含联系方式)
+- ✅ USER_GUIDE_CN.md
 - ✅ quick_reference.md
 - ✅ cli_usage_correction.md
 - ✅ correct_ptx_usage_examples.md
 - ✅ auto_param_type_inference_guide.md
+- ✅ logging_system.md
 - ✅ multi_function_execution_guide.md
 - ✅ no_param_kernel_support.md
 - ✅ ptx_entry_function_complete_guide.md
@@ -75,11 +77,13 @@
 - ✅ param_type_of_ptx_entry_function.md
 - ✅ api_documentation.md
 - ✅ visualization_features.md
+- ✅ usage_examples.md
 
-### 规范文档 (spec_docs/)
+### 规范文档 (docs_spec/)
 - ✅ README.md
 - ✅ warp_scheduler.md
 - ✅ divergence_handling.md
+- ✅ have_not_simulated.md
 - ✅ reconvergence_mechanism.md
 - ✅ predicate_handler.md
 - ✅ cuda_binary_loader.md
@@ -89,6 +93,10 @@
 - ✅ README.md
 - ✅ DOCS_INDEX.md
 - ✅ DOCS_REORGANIZATION.md
+- ✅ RELEASE_NOTES.md
+- ✅ CONTRIBUTORS.md
+- ✅ CHANGELOG.md
+- ✅ AUTHORS_UPDATE.md
 
 ## 🔍 验证方法
 
@@ -96,10 +104,10 @@
 
 ```bash
 # 检查包含 TongyiLingma 的文档数量
-grep -r "TongyiLingma" dev_docs/ user_docs/ spec_docs/ *.md | wc -l
+grep -r "TongyiLingma" docs_dev/ docs_user/ docs_spec/ *.md | wc -l
 
 # 列出所有包含作者信息的文档
-grep -l "TongyiLingma" dev_docs/*.md user_docs/*.md spec_docs/*.md *.md
+grep -l "TongyiLingma" docs_dev/*.md docs_dev/archive/*.md docs_user/*.md docs_spec/*.md *.md
 ```
 
 ## ✅ 完成标记
@@ -139,6 +147,6 @@ grep -l "TongyiLingma" dev_docs/*.md user_docs/*.md spec_docs/*.md *.md
 
 ---
 
-**更新完成**: 2025-10-29  
-**更新执行**: 自动化脚本批量更新  
-**总文档数**: 41 个 Markdown 文件
+**更新完成**: 2025-10-29（作者信息批量更新），2026-02-04（路径与归档整理后更新本记录）  
+**更新执行**: 自动化脚本批量更新；后续手工整理文档结构与链接  
+**总文档数**: 70 个 Markdown 文件（按当前目录结构统计）
